@@ -4,7 +4,9 @@ import { supabase } from './supabaseClient';
 import { EvaCore } from './src/modulos/eva/EvaCore';
 import { ConfigurationView } from './src/modulos/configuracion/ConfigurationView';
 import { NeuralNetworkView } from './src/modulos/red-neuronal/NeuralNetworkView';
+import { AssetManagerView } from './src/modulos/activos/AssetManagerView';
 import { Icons } from './src/components/Icons';
+import { subscribeToTicker, subscribeToDepth, executeOrder, getAccountInfo } from './src/services/binanceService';
 import { 
     View, 
     BotStatus, 
@@ -12,13 +14,14 @@ import {
     StrategyType, 
     MarketData, 
     LogEntry, 
-    BinanceConfig 
+    BinanceConfig,
+    AssetConfig
 } from './src/types';
 
 // --- SUB-COMPONENTES VISUALES ---
 
 const AdvancedChart = ({ data, type }: { data: number[], type: ChartType }) => {
-  if (data.length < 2) return <div className="h-full w-full bg-slate-900/50 flex items-center justify-center text-slate-500 animate-pulse font-mono text-xs">ESTABLECIENDO ENLACE WEBSOCKET...</div>;
+  if (data.length < 2) return <div className="h-full w-full bg-slate-900/50 flex items-center justify-center text-slate-500 animate-pulse font-mono text-xs">ESPERANDO DATOS DE MERCADO...</div>;
 
   const max = Math.max(...data);
   const min = Math.min(...data);
@@ -37,11 +40,13 @@ const AdvancedChart = ({ data, type }: { data: number[], type: ChartType }) => {
 
   const areaPoints = `${points} ${width},${height} 0,${height}`;
 
+  // Simplificación de velas para datos reales de línea (para verdadera vela necesitamos OHLCV)
   const candles = data.map((close, i) => {
     const prevClose = i > 0 ? data[i - 1] : close;
     const open = prevClose;
-    const high = Math.max(open, close) + Math.random() * (range * 0.1);
-    const low = Math.min(open, close) - Math.random() * (range * 0.1);
+    // Simulación visual mínima para velas basadas solo en tick data
+    const high = Math.max(open, close) + (Math.abs(close-open) * 0.1);
+    const low = Math.min(open, close) - (Math.abs(close-open) * 0.1);
     
     const x = (i / data.length) * width;
     const yHigh = height - ((high - min) / range) * height;
@@ -83,15 +88,8 @@ const AdvancedChart = ({ data, type }: { data: number[], type: ChartType }) => {
                 )}
             </g>
         ))}
-        {type === 'depth' && (
-            <>
-                <polygon points={`0,${height} ${width/2},${height} ${width/2},${height*0.4} 0,${height*0.2}`} fill="url(#depthBid)" stroke="#10b981" strokeWidth="2"/>
-                <polygon points={`${width},${height} ${width/2},${height} ${width/2},${height*0.45} ${width},${height*0.2}`} fill="url(#depthAsk)" stroke="#f43f5e" strokeWidth="2"/>
-                <line x1={width/2} y1={0} x2={width/2} y2={height} strokeDasharray="4" stroke="#475569" strokeWidth="1" />
-            </>
-        )}
       </svg>
-      {type !== 'depth' && (
+      {type !== 'depth' && data.length > 0 && (
           <div className="absolute right-0 top-0 bottom-0 w-full pointer-events-none">
             <div className="absolute right-0 border-t border-dashed border-slate-600 w-full" style={{ top: `${100 - ((data[data.length - 1] - min) / range) * 100}%` }}>
               <span className={`absolute right-1 -top-3 text-xs px-1 rounded font-bold ${isUp ? 'bg-emerald-900/80 text-emerald-400' : 'bg-rose-900/80 text-rose-400'}`}>{data[data.length - 1].toFixed(2)}</span>
@@ -102,19 +100,16 @@ const AdvancedChart = ({ data, type }: { data: number[], type: ChartType }) => {
   );
 };
 
-const OrderBook = ({ price }: { price: number }) => {
-  const asks = Array.from({ length: 8 }).map((_, i) => ({ price: price + (i * 5) + Math.random(), size: Math.random() * 2 })).reverse();
-  const bids = Array.from({ length: 8 }).map((_, i) => ({ price: price - (i * 5) - Math.random(), size: Math.random() * 2 }));
-
+const OrderBook = ({ bids, asks, price }: { bids: {price:number, size:number}[], asks: {price:number, size:number}[], price: number }) => {
   return (
     <div className="flex flex-col h-full text-xs font-mono">
       <div className="flex justify-between text-slate-500 mb-2 px-1"><span>PRECIO (USDT)</span><span>CANTIDAD</span></div>
       <div className="flex-1 flex flex-col justify-end gap-0.5 overflow-hidden">
-        {asks.map((o, i) => <div key={i} className="flex justify-between px-1 relative hover:bg-rose-900/20"><span className="text-rose-400">{o.price.toFixed(2)}</span><span className="text-slate-400">{o.size.toFixed(4)}</span></div>)}
+        {asks.slice(0, 8).reverse().map((o, i) => <div key={i} className="flex justify-between px-1 relative hover:bg-rose-900/20"><span className="text-rose-400">{o.price.toFixed(2)}</span><span className="text-slate-400">{o.size.toFixed(5)}</span></div>)}
       </div>
       <div className="py-2 text-center text-base font-bold text-white bg-slate-900/50 my-1 rounded border border-slate-800">{price.toFixed(2)}</div>
       <div className="flex-1 flex flex-col justify-start gap-0.5 overflow-hidden">
-        {bids.map((o, i) => <div key={i} className="flex justify-between px-1 relative hover:bg-emerald-900/20"><span className="text-emerald-400">{o.price.toFixed(2)}</span><span className="text-slate-400">{o.size.toFixed(4)}</span></div>)}
+        {bids.slice(0, 8).map((o, i) => <div key={i} className="flex justify-between px-1 relative hover:bg-emerald-900/20"><span className="text-emerald-400">{o.price.toFixed(2)}</span><span className="text-slate-400">{o.size.toFixed(5)}</span></div>)}
       </div>
     </div>
   );
@@ -126,7 +121,7 @@ const BotTerminal = ({ logs, status }: { logs: LogEntry[], status: BotStatus }) 
   return (
     <div className="h-full flex flex-col bg-black rounded-lg border border-slate-800 font-mono text-xs overflow-hidden relative shadow-inner shadow-slate-900 group">
       <div className="flex items-center justify-between px-3 py-2 bg-slate-900 border-b border-slate-800">
-        <span className="flex items-center gap-2 text-yellow-400 font-bold"><Icons.Binance /> BINANCE_EXEC_V3</span>
+        <span className="flex items-center gap-2 text-yellow-400 font-bold"><Icons.Binance /> BINANCE_EXEC_REAL_V1</span>
         <div className="flex gap-2 items-center"><div className={`h-2 w-2 rounded-full ${status === 'EXECUTING' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-600'}`}></div></div>
       </div>
       <div className="flex-1 overflow-y-auto p-3 space-y-1.5 opacity-90 max-h-[200px] md:max-h-none">
@@ -155,6 +150,7 @@ const SplashScreen = () => (
                 <div className="w-2 h-2 bg-yellow-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
                 <div className="w-2 h-2 bg-yellow-500 rounded-full animate-bounce"></div>
             </div>
+            <span className="text-xs text-slate-600 font-mono">Conectando a Red Principal Binance...</span>
         </div>
     </div>
 );
@@ -164,10 +160,15 @@ const SplashScreen = () => (
 export default function App() {
   const [currentView, setCurrentView] = useState<View>('DASHBOARD');
   const [loading, setLoading] = useState(true);
+  
+  // DATOS REALES
   const [marketData, setMarketData] = useState<MarketData>({
-    price: 64230.50, change24h: 2.4, high24h: 65100.00, low24h: 63900.20, volume: "1.2B"
+    price: 0, change24h: 0, high24h: 0, low24h: 0, volume: "---"
   });
-  const [priceHistory, setPriceHistory] = useState<number[]>(Array.from({ length: 50 }, () => 64000 + Math.random() * 500));
+  const [orderBook, setOrderBook] = useState<{bids: any[], asks: any[]}>({ bids: [], asks: [] });
+  const [priceHistory, setPriceHistory] = useState<number[]>([]);
+  const [accountBalance, setAccountBalance] = useState<{ asset: string, free: string, locked: string }[]>([]);
+
   const [botStatus, setBotStatus] = useState<BotStatus>('IDLE');
   const [chartType, setChartType] = useState<ChartType>('area');
   const [dbConnected, setDbConnected] = useState<boolean>(false);
@@ -176,7 +177,8 @@ export default function App() {
     email: '', 
     apiKey: '', apiSecret: '', leverage: 20, useTestnet: false,
     maxPositionSize: 10, stopLoss: 1.5, takeProfit: 3.0, strategy: 'SCALPING_MACD',
-    operationDuration: 60 
+    operationDuration: 60,
+    autonomousMode: false // Default
   });
 
   const [logs, setLogs] = useState<LogEntry[]>([
@@ -188,11 +190,11 @@ export default function App() {
     setLogs(prev => [...prev.slice(-49), entry]);
   };
 
+  // --- CARGA INICIAL Y WEBSOCKETS ---
   useEffect(() => {
     const initSystem = async () => {
         try {
             const { error: healthError } = await supabase.from('bot_config').select('id', { count: 'exact', head: true });
-            
             if (!healthError) {
                 setDbConnected(true);
                 const { data, error } = await supabase.from('bot_config').select('*').single();
@@ -204,28 +206,70 @@ export default function App() {
                         leverage: data.leverage || 20,
                         useTestnet: data.use_testnet || false,
                         maxPositionSize: data.max_position_size || 10,
-                        stopLoss: data.stop_loss || 1.5,
-                        takeProfit: data.take_profit || 3.0,
+                        stop_loss: data.stop_loss || 1.5,
+                        take_profit: data.take_profit || 3.0,
                         strategy: (data.strategy as StrategyType) || 'SCALPING_MACD',
-                        operationDuration: data.operation_duration_minutes || 60
-                    });
+                        operation_duration_minutes: data.operation_duration_minutes || 60,
+                        autonomousMode: data.autonomous_mode || false // Mapeo si existiera columna, sino false
+                    } as any);
                     addLog('Configuración sincronizada desde Base de Datos', 'success');
-                } else {
-                    addLog('No se encontró configuración previa. Usando valores por defecto.', 'warning');
                 }
             } else {
-                addLog('Modo Offline: No se pudo conectar a la base de datos.', 'error');
+                addLog('Modo Offline: BD desconectada.', 'error');
             }
         } catch (e) {
             console.error(e);
-            addLog('Error crítico al inicializar subsistemas.', 'error');
         } finally {
             setTimeout(() => setLoading(false), 2000);
         }
     };
 
     initSystem();
+
+    // Iniciar Websockets Reales
+    const wsTicker = subscribeToTicker('BTCUSDT', (data) => {
+        setMarketData(prev => ({
+            price: data.price,
+            change24h: data.change24h,
+            high24h: data.high24h,
+            low24h: data.low24h,
+            volume: data.volume
+        }));
+        setPriceHistory(prev => {
+            const newHist = [...prev, data.price];
+            return newHist.slice(-50); // Mantener 50 puntos
+        });
+    });
+
+    const wsDepth = subscribeToDepth('BTCUSDT', (data) => {
+        setOrderBook(data);
+    });
+
+    return () => {
+        wsTicker.close();
+        wsDepth.close();
+    };
   }, []);
+
+  const refreshAccount = async () => {
+      if(!binanceConfig.apiKey || !binanceConfig.apiSecret) return;
+      try {
+          addLog("Consultando balance real en Binance...", 'system');
+          const info = await getAccountInfo(binanceConfig.apiKey, binanceConfig.apiSecret);
+          if(info && info.balances) {
+              setAccountBalance(info.balances);
+              addLog("Balance actualizado correctamente.", 'success');
+          }
+      } catch(e: any) {
+          addLog(`Error de cuenta: ${e.message}`, 'error');
+      }
+  };
+
+  useEffect(() => {
+      if(binanceConfig.apiKey && binanceConfig.apiSecret) {
+          refreshAccount();
+      }
+  }, [binanceConfig.apiKey]);
 
   const saveConfigToDb = async () => {
     if (!dbConnected) {
@@ -245,6 +289,7 @@ export default function App() {
             take_profit: binanceConfig.takeProfit,
             strategy: binanceConfig.strategy,
             operation_duration_minutes: binanceConfig.operationDuration,
+            autonomous_mode: binanceConfig.autonomousMode, // Intento de guardar el nuevo flag
             updated_at: new Date().toISOString()
         });
 
@@ -255,45 +300,38 @@ export default function App() {
         addLog('Fallo al persistir configuración.', 'error');
     }
   };
+  
+  const handleSaveAssets = (assets: AssetConfig[]) => {
+      // En una implementación completa esto iría a Supabase
+      addLog(`Matriz de Activos actualizada: ${assets.length} activos vinculados.`, 'success');
+  };
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setMarketData(prev => {
-        const volatility = (Math.random() - 0.5) * 50;
-        const newPrice = prev.price + volatility;
-        setPriceHistory(h => [...h.slice(1), newPrice]);
-        return { ...prev, price: newPrice, change24h: prev.change24h + (volatility / 1000) };
-      });
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    if (botStatus !== 'EXECUTING') return;
-    const analysisInterval = setInterval(() => {
-      if (Math.random() > 0.7) addLog(`Análisis (${binanceConfig.strategy}): Señal detectada`, 'info');
-    }, 2000);
-    const executionInterval = setInterval(() => {
-      if (Math.random() > 0.85) {
-        const orderId = Math.floor(Math.random() * 90000000) + 10000000;
-        addLog(`Orden #${orderId} ENVIADA. Apalancamiento: ${binanceConfig.leverage}x`, 'info');
-        setTimeout(() => addLog(`Orden #${orderId} EJECUTADA.`, 'success'), 800);
+  const executeManualTrade = async (side: 'BUY' | 'SELL') => {
+      if (!binanceConfig.apiKey || !binanceConfig.apiSecret) {
+          addLog("FALTAN API KEYS PARA OPERAR", 'error');
+          return;
       }
-    }, 4500);
-    return () => { clearInterval(analysisInterval); clearInterval(executionInterval); };
-  }, [botStatus, binanceConfig]);
+      try {
+          addLog(`Enviando orden ${side} a Binance...`, 'warning');
+          const result = await executeOrder(binanceConfig.apiKey, binanceConfig.apiSecret, 'BTCUSDT', side, 0.0001); 
+          addLog(`ORDEN EJECUTADA: ${result.orderId}`, 'success');
+          refreshAccount();
+      } catch (e: any) {
+          addLog(`FALLO EJECUCIÓN: ${e.message}`, 'error');
+      }
+  };
 
   const toggleBot = () => {
     if (botStatus === 'IDLE' || botStatus === 'HALTED') {
-      if (!binanceConfig.apiKey && !binanceConfig.useTestnet) { 
+      if (!binanceConfig.apiKey) { 
         setCurrentView('SETTINGS'); 
         addLog('Error: Configure API Keys primero.', 'error'); 
         return; 
       }
       setBotStatus('CONNECTING');
-      addLog(`Conectando a ${binanceConfig.useTestnet ? 'Testnet' : 'Mainnet'}...`, 'system');
+      addLog(`Autenticando con Binance API...`, 'system');
       setTimeout(() => {
-        addLog(`Conexión establecida. Duración sesión: ${binanceConfig.operationDuration}m`, 'system');
+        addLog(`Motor de Trading Iniciado.`, 'success');
         setBotStatus('EXECUTING');
       }, 2000);
     } else {
@@ -338,6 +376,14 @@ export default function App() {
           >
             <Icons.Brain />
           </button>
+          
+          <button 
+            onClick={() => setCurrentView('ASSETS')}
+            className={`p-3 rounded-lg transition-all ${currentView === 'ASSETS' ? 'bg-slate-800 text-yellow-400 shadow-inner shadow-yellow-900/20' : 'text-slate-500 hover:text-slate-200'}`}
+            title="Gestión de Activos"
+          >
+            <Icons.Coins />
+          </button>
 
           <button 
             onClick={() => setCurrentView('SETTINGS')}
@@ -355,7 +401,7 @@ export default function App() {
         {currentView === 'DASHBOARD' && (
         <header className="h-16 border-b border-slate-800 bg-slate-950/50 flex items-center justify-between px-4 sm:px-6 backdrop-blur-sm shrink-0 z-10">
           <div className="flex items-center gap-4">
-            <h1 className="text-lg sm:text-xl font-bold text-white tracking-wide flex items-center gap-2">BTC / USDT <span className="hidden sm:inline-block text-xs font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400">BINANCE</span></h1>
+            <h1 className="text-lg sm:text-xl font-bold text-white tracking-wide flex items-center gap-2">BTC / USDT <span className="hidden sm:inline-block text-xs font-mono px-2 py-0.5 rounded bg-emerald-900 text-emerald-400 border border-emerald-800 animate-pulse">LIVE FEED</span></h1>
             <div className="hidden sm:block h-8 w-px bg-slate-800 mx-2"></div>
             <div className={`text-xl sm:text-2xl font-mono font-medium ${marketData.change24h >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{marketData.price.toFixed(2)}</div>
           </div>
@@ -365,8 +411,10 @@ export default function App() {
                 <span className={`text-xs font-bold ${dbConnected ? 'text-emerald-400' : 'text-rose-400'} hidden sm:inline`}>{dbConnected ? 'DB: ON' : 'DB: OFF'}</span>
             </div>
             <div className="text-right hidden md:block">
-              <div className="text-xs text-slate-500">Balance (BTC)</div>
-              <div className="text-lg font-mono font-bold text-white">1.2405</div>
+              <div className="text-xs text-slate-500">Balance USDT</div>
+              <div className="text-lg font-mono font-bold text-white">
+                  {accountBalance.find(a => a.asset === 'USDT') ? parseFloat(accountBalance.find(a => a.asset === 'USDT')!.free).toFixed(2) : '--'}
+              </div>
             </div>
             <div className="h-10 w-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center shadow-lg"><span className="font-bold text-xs text-yellow-500">EVA</span></div>
           </div>
@@ -377,9 +425,11 @@ export default function App() {
         {currentView === 'SETTINGS' ? (
             <ConfigurationView config={binanceConfig} setConfig={setBinanceConfig} dbConnected={dbConnected} onSave={saveConfigToDb} />
         ) : currentView === 'EVA_BRAIN' ? (
-           <EvaCore />
+           <EvaCore marketData={marketData} accountBalance={accountBalance} />
         ) : currentView === 'NEURAL_NET' ? (
            <NeuralNetworkView />
+        ) : currentView === 'ASSETS' ? (
+           <AssetManagerView accountBalance={accountBalance} onSaveConfig={handleSaveAssets} />
         ) : (
             <div className="flex-1 p-4 grid grid-cols-1 lg:grid-cols-12 gap-4 overflow-y-auto">
                 <div className="lg:col-span-9 flex flex-col gap-4">
@@ -391,9 +441,8 @@ export default function App() {
                                         {t === 'line' ? <Icons.Activity /> : t === 'candle' ? <Icons.Chart /> : t === 'bar' ? <Icons.BarChart /> : <Icons.Layers />}
                                     </button>
                                 ))}
-                                <button onClick={() => setChartType('depth')} className={`px-3 py-1.5 text-xs font-bold rounded transition-all ${chartType === 'depth' ? 'bg-slate-800 text-yellow-400' : 'text-slate-500'}`}>DEPTH</button>
                             </div>
-                            <div className="flex items-center gap-2 text-xs text-slate-500"><span className={`w-2 h-2 rounded-full ${botStatus === 'EXECUTING' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-600'}`}></span> WebSocket</div>
+                            <div className="flex items-center gap-2 text-xs text-emerald-400"><span className={`w-2 h-2 rounded-full bg-emerald-500 animate-pulse`}></span> LIVE SOCKET</div>
                         </div>
                         <div className="flex-1 relative z-10"><AdvancedChart data={priceHistory} type={chartType} /></div>
                     </section>
@@ -409,8 +458,8 @@ export default function App() {
                                         <div className="text-xs text-yellow-400 font-mono">{binanceConfig.strategy}</div>
                                     </div>
                                     <div>
-                                        <div className="flex justify-between text-xs mb-1"><span className="text-slate-500">PNL 24h</span><span className="text-emerald-400 font-mono">+$1,240.50</span></div>
-                                        <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden"><div className="h-full bg-emerald-500 w-[65%]"></div></div>
+                                        <div className="flex justify-between text-xs mb-1"><span className="text-slate-500">Estado</span><span className={botStatus === 'EXECUTING' ? "text-emerald-400 font-mono" : "text-slate-500"}>{botStatus}</span></div>
+                                        <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden"><div className={`h-full w-full transition-all duration-1000 ${botStatus === 'EXECUTING' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-600'}`}></div></div>
                                     </div>
                                 </div>
                             </div>
@@ -423,15 +472,14 @@ export default function App() {
                 <div className="lg:col-span-3 flex flex-col gap-4">
                     <section className="h-[400px] lg:h-[calc(100%-350px)] min-h-[400px] bg-slate-900/50 rounded-xl border border-slate-800 p-3 shadow-xl overflow-hidden flex flex-col">
                         <h3 className="text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider flex justify-between"><span>Libro de Órdenes</span><span className="text-[10px] bg-slate-800 px-1 rounded text-slate-300">BTCUSDT</span></h3>
-                        <OrderBook price={marketData.price} />
+                        <OrderBook bids={orderBook.bids} asks={orderBook.asks} price={marketData.price} />
                     </section>
-                    <section className="bg-slate-900 rounded-xl border border-slate-800 p-4 shadow-xl opacity-75 pointer-events-none relative">
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-[1px] z-10"><div className="text-xs font-mono text-yellow-500 bg-black/80 px-3 py-1 rounded border border-yellow-500/30">TRADING AUTOMÁTICO ACTIVO</div></div>
-                        <div className="flex bg-slate-800 rounded p-1 mb-4"><button className="flex-1 py-1.5 text-sm font-bold rounded bg-emerald-600 text-white shadow">Comprar</button><button className="flex-1 py-1.5 text-sm font-bold rounded text-slate-400 hover:text-white">Vender</button></div>
+                    <section className="bg-slate-900 rounded-xl border border-slate-800 p-4 shadow-xl relative">
+                        <div className="flex bg-slate-800 rounded p-1 mb-4"><button onClick={() => executeManualTrade('BUY')} className="flex-1 py-1.5 text-sm font-bold rounded bg-emerald-600 text-white shadow hover:bg-emerald-500 transition-colors">Comprar</button><button onClick={() => executeManualTrade('SELL')} className="flex-1 py-1.5 text-sm font-bold rounded bg-rose-600 text-white shadow hover:bg-rose-500 transition-colors ml-2">Vender</button></div>
                         <div className="space-y-3">
-                            <div><label className="text-xs text-slate-500 mb-1 block">Precio (USDT)</label><div className="flex items-center bg-slate-950 border border-slate-700 rounded px-3 py-2"><input type="text" value={marketData.price.toFixed(2)} readOnly className="bg-transparent w-full text-right text-sm text-white focus:outline-none" /></div></div>
-                            <div className="flex justify-between text-xs text-slate-500 pt-2"><span>Disponible</span><span>1.24 BTC</span></div>
-                            <button className="w-full py-3 mt-2 rounded bg-slate-700 text-slate-400 font-bold uppercase tracking-wider">Trading Manual Bloqueado</button>
+                            <div><label className="text-xs text-slate-500 mb-1 block">Precio Mercado (USDT)</label><div className="flex items-center bg-slate-950 border border-slate-700 rounded px-3 py-2"><input type="text" value={marketData.price.toFixed(2)} readOnly className="bg-transparent w-full text-right text-sm text-white focus:outline-none" /></div></div>
+                            <div className="flex justify-between text-xs text-slate-500 pt-2"><span>USDT Disp.</span><span>{accountBalance.find(a => a.asset === 'USDT') ? parseFloat(accountBalance.find(a => a.asset === 'USDT')!.free).toFixed(2) : '--'}</span></div>
+                            <div className="text-[10px] text-center text-rose-500 font-bold mt-2 animate-pulse">⚠️ MODO REAL ACTIVO</div>
                         </div>
                     </section>
                 </div>

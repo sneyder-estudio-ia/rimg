@@ -31,6 +31,65 @@ export const ConfigurationView = ({
         setTimeout(() => setSaved(false), 2000);
     };
 
+    // --- MACROS DE ESTRATEGIA (PRESETS) ---
+    const applyStrategyPreset = (strat: StrategyType) => {
+        let updates: Partial<BinanceConfig> = {};
+        
+        switch (strat) {
+            case 'SCALPING_MACD':
+                updates = {
+                    leverage: 20,
+                    stopLoss: 0.5,
+                    takeProfit: 1.5,
+                    maxPositionSize: 15,
+                    operationDuration: 45
+                };
+                break;
+            case 'SWING_RSI':
+                updates = {
+                    leverage: 5,
+                    stopLoss: 5.0,
+                    takeProfit: 12.0,
+                    maxPositionSize: 25,
+                    operationDuration: 1440 // 24h
+                };
+                break;
+            case 'AI_SENTIMENT':
+                updates = {
+                    leverage: 10,
+                    stopLoss: 2.0,
+                    takeProfit: 4.0,
+                    maxPositionSize: 10,
+                    operationDuration: 240 // 4h
+                };
+                break;
+        }
+        
+        // Aplicar cambios
+        setConfig({ ...config, strategy: strat, ...updates });
+    };
+
+    const STRATEGY_DETAILS = {
+        SCALPING_MACD: {
+            title: "Scalping de Alta Frecuencia",
+            indicators: ["MACD (12, 26, 9)", "Bollinger Bands (20, 2)", "EMA (50)"],
+            timeframe: "1m - 5m",
+            logic: "Busca micro-rupturas de volatilidad confirmadas por cruces de MACD. Entradas rápidas con stops muy ajustados."
+        },
+        SWING_RSI: {
+            title: "Swing Trading Momentum",
+            indicators: ["RSI (14)", "EMA (200)", "Fibonacci Retracement"],
+            timeframe: "1h - 4h",
+            logic: "Identifica cambios de tendencia en zonas de sobreventa/sobrecompra a favor de la tendencia mayor (EMA 200)."
+        },
+        AI_SENTIMENT: {
+            title: "EVA Sentiment & Order Flow",
+            indicators: ["Order Book Imbalance", "Whale Watcher", "Social Sentiment"],
+            timeframe: "Dinámico",
+            logic: "Analiza la profundidad de mercado y el flujo de órdenes grandes para anticipar movimientos antes de que ocurran."
+        }
+    };
+
     return (
         <div className="flex-1 p-6 md:p-8 overflow-y-auto bg-slate-950">
             <div className="max-w-4xl mx-auto space-y-8">
@@ -40,12 +99,47 @@ export const ConfigurationView = ({
                         <h2 className="text-3xl font-bold text-white flex items-center gap-3">
                             <Icons.Settings /> CONFIGURACIÓN DEL SISTEMA
                         </h2>
-                        <p className="text-slate-500 mt-2 font-mono text-sm">Versión del protocolo: EVA v10.5.2 // Acceso Administrativo</p>
+                        <p className="text-slate-500 mt-2 font-mono text-sm">Versión del protocolo: EVA v10.5.3 // Acceso Administrativo</p>
                     </div>
                     {dbConnected ? 
                         <span className="px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-full text-xs font-bold flex items-center gap-2"><Icons.Database /> DB SINCRONIZADA</span> :
                         <span className="px-3 py-1 bg-rose-500/10 border border-rose-500/30 text-rose-400 rounded-full text-xs font-bold flex items-center gap-2"><Icons.CloudOff /> DB DESCONECTADA</span>
                     }
+                </div>
+
+                {/* --- NODO DE AUTONOMÍA (NIVEL 5) --- */}
+                <div className={`rounded-xl border-2 overflow-hidden transition-all duration-500 ${config.autonomousMode ? 'bg-purple-900/20 border-purple-500 shadow-[0_0_50px_rgba(168,85,247,0.2)]' : 'bg-slate-900/50 border-slate-800'}`}>
+                    <div className="p-6 flex flex-col md:flex-row items-center justify-between gap-6 relative">
+                         {config.autonomousMode && <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/diagmonds-light.png')] opacity-10 animate-pulse pointer-events-none"></div>}
+                         
+                         <div className="flex-1 relative z-10">
+                             <div className="flex items-center gap-3 mb-2">
+                                 <h3 className={`text-xl font-bold tracking-wider flex items-center gap-2 ${config.autonomousMode ? 'text-purple-400' : 'text-slate-300'}`}>
+                                     <Icons.Brain /> MODO AUTÓNOMA (Soberanía de IA)
+                                 </h3>
+                                 {config.autonomousMode && <span className="text-[10px] bg-purple-600 text-white px-2 py-0.5 rounded animate-pulse">ACTIVO</span>}
+                             </div>
+                             <p className="text-slate-400 text-sm leading-relaxed max-w-2xl">
+                                AL ACTIVAR ESTE PROTOCOLO, <strong className="text-white">EVA ANULA LOS LÍMITES DE INTERVENCIÓN HUMANA</strong>. EL SISTEMA TOMARÁ DECISIONES DE COMPRA/VENTA INSTANTÁNEAS BASADAS EN SU PROPIA HEURÍSTICA SIN SOLICITAR CONFIRMACIÓN.
+                             </p>
+                             {config.autonomousMode && (
+                                 <div className="mt-3 flex items-center gap-2 text-rose-400 text-xs font-bold font-mono">
+                                     <Icons.Alert /> ADVERTENCIA: RIESGO DE CAPITAL TOTAL ASUMIDO POR EL USUARIO.
+                                 </div>
+                             )}
+                         </div>
+
+                         <div className="relative z-10">
+                            <button 
+                                onClick={() => setConfig({...config, autonomousMode: !config.autonomousMode})}
+                                className={`w-20 h-10 rounded-full transition-all relative shadow-inner ${config.autonomousMode ? 'bg-purple-600 shadow-purple-900/50' : 'bg-slate-700 shadow-slate-900/50'}`}
+                            >
+                                <div className={`absolute top-1 w-8 h-8 bg-white rounded-full transition-all shadow-lg flex items-center justify-center ${config.autonomousMode ? 'left-11' : 'left-1'}`}>
+                                    {config.autonomousMode ? <div className="w-2 h-2 bg-purple-600 rounded-full animate-ping"></div> : <div className="w-2 h-2 bg-slate-400 rounded-full"></div>}
+                                </div>
+                            </button>
+                         </div>
+                    </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -84,6 +178,72 @@ export const ConfigurationView = ({
                         </div>
                     </div>
                     
+                    {/* SECTION 3: STRATEGY CORE (AHORA MÁS FUNCIONAL) */}
+                    <div className="md:col-span-2 space-y-6">
+                        <div className="flex items-center gap-2 text-blue-400 mb-2 border-b border-slate-800 pb-2">
+                            <Icons.Cpu /> <h3 className="font-bold tracking-wider">NÚCLEO NEURONAL (ESTRATEGIA)</h3>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            {[
+                                { id: 'SCALPING_MACD', name: 'Scalping H.F.', desc: 'Alta frecuencia. Riesgo Medio.', color: 'border-yellow-500 shadow-[0_0_15px_rgba(234,179,8,0.2)]' },
+                                { id: 'SWING_RSI', name: 'Swing Momentum', desc: 'Mediano plazo. Riesgo Bajo.', color: 'border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.2)]' },
+                                { id: 'AI_SENTIMENT', name: 'EVA Sentiment AI', desc: 'Análisis Order Flow. Experimental.', color: 'border-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.2)]' }
+                            ].map((strat) => (
+                                <div 
+                                    key={strat.id}
+                                    onClick={() => setConfig({...config, strategy: strat.id as StrategyType})}
+                                    className={`relative p-4 rounded-xl border-2 cursor-pointer transition-all hover:scale-[1.02] flex flex-col justify-between h-28 overflow-hidden ${config.strategy === strat.id ? `${strat.color} bg-slate-900` : 'border-slate-800 bg-slate-950/50 hover:bg-slate-900'}`}
+                                >
+                                    {config.strategy === strat.id && <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent pointer-events-none"></div>}
+                                    <div className="flex justify-between items-start">
+                                        <h4 className={`font-bold ${config.strategy === strat.id ? 'text-white' : 'text-slate-400'}`}>{strat.name}</h4>
+                                        <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${config.strategy === strat.id ? 'bg-current border-transparent' : 'border-slate-600'}`}>
+                                            {config.strategy === strat.id && <div className="w-1.5 h-1.5 bg-black rounded-full"></div>}
+                                        </div>
+                                    </div>
+                                    <p className="text-xs text-slate-500 leading-tight">{strat.desc}</p>
+                                </div>
+                            ))}
+                        </div>
+                        
+                        {/* PANEL DE DETALLE Y PRESETS */}
+                        <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-5 animate-in fade-in slide-in-from-top-4 duration-300">
+                            <div className="flex flex-col md:flex-row gap-6">
+                                <div className="flex-1 space-y-3">
+                                    <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                                        <Icons.Activity /> DETALLES TÁCTICOS: <span className="text-yellow-400">{STRATEGY_DETAILS[config.strategy].title}</span>
+                                    </h4>
+                                    <p className="text-xs text-slate-400 leading-relaxed border-l-2 border-slate-700 pl-3">
+                                        {STRATEGY_DETAILS[config.strategy].logic}
+                                    </p>
+                                    <div className="flex flex-wrap gap-2 mt-2">
+                                        {STRATEGY_DETAILS[config.strategy].indicators.map((ind, i) => (
+                                            <span key={i} className="text-[10px] bg-slate-800 text-slate-300 px-2 py-1 rounded border border-slate-700 font-mono">
+                                                {ind}
+                                            </span>
+                                        ))}
+                                        <span className="text-[10px] bg-slate-800 text-cyan-400 px-2 py-1 rounded border border-slate-700 font-mono">
+                                            TF: {STRATEGY_DETAILS[config.strategy].timeframe}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div className="flex flex-col justify-center border-t md:border-t-0 md:border-l border-slate-800 pt-4 md:pt-0 md:pl-6">
+                                    <button 
+                                        onClick={() => applyStrategyPreset(config.strategy)}
+                                        className="bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold py-2 px-4 rounded-lg border border-slate-600 flex items-center gap-2 transition-all mb-2"
+                                        title="Aplica Stop Loss, Leverage y Take Profit recomendados para esta estrategia"
+                                    >
+                                        <Icons.Zap /> APLICAR PRESET RECOMENDADO
+                                    </button>
+                                    <p className="text-[10px] text-slate-500 text-center max-w-[200px]">
+                                        Ajusta automáticamente Riesgo, Apalancamiento y Duración.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     {/* LEFT COLUMN: API + TIME */}
                     <div className="space-y-8">
                         {/* SECTION 1: API CONNECTION */}
@@ -215,32 +375,6 @@ export const ConfigurationView = ({
                         </div>
                     </div>
 
-                    {/* SECTION 3: STRATEGY CORE */}
-                    <div className="md:col-span-2 space-y-6">
-                        <div className="flex items-center gap-2 text-blue-400 mb-2 border-b border-slate-800 pb-2">
-                            <Icons.Cpu /> <h3 className="font-bold tracking-wider">NÚCLEO NEURONAL (ESTRATEGIA)</h3>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            {[
-                                { id: 'SCALPING_MACD', name: 'Scalping H.F.', desc: 'Alta frecuencia. Basado en MACD y Bollinger. Riesgo Medio.', color: 'border-yellow-500/50 bg-yellow-500/10' },
-                                { id: 'SWING_RSI', name: 'Swing Momentum', desc: 'Operaciones a mediano plazo. Cruces de RSI y medias móviles. Riesgo Bajo.', color: 'border-blue-500/50 bg-blue-500/10' },
-                                { id: 'AI_SENTIMENT', name: 'EVA Sentiment AI', desc: 'Análisis de sentimiento de mercado + Order Flow. Experimental.', color: 'border-purple-500/50 bg-purple-500/10' }
-                            ].map((strat) => (
-                                <div 
-                                    key={strat.id}
-                                    onClick={() => setConfig({...config, strategy: strat.id as StrategyType})}
-                                    className={`p-4 rounded-xl border-2 cursor-pointer transition-all hover:scale-[1.02] ${config.strategy === strat.id ? strat.color : 'border-slate-800 bg-slate-900/30 hover:bg-slate-900'}`}
-                                >
-                                    <div className="flex justify-between items-start mb-2">
-                                        <h4 className="font-bold text-white">{strat.name}</h4>
-                                        <div className={`w-4 h-4 rounded-full border-2 ${config.strategy === strat.id ? 'bg-white border-transparent' : 'border-slate-600'}`}></div>
-                                    </div>
-                                    <p className="text-xs text-slate-400 leading-relaxed">{strat.desc}</p>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
                 </div>
 
                 {validationError && (
