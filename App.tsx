@@ -1,65 +1,24 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './supabaseClient';
-import { EvaCore } from './modulos/eva/EvaCore';
+import { EvaCore } from './src/modulos/eva/EvaCore';
+import { ConfigurationView } from './src/modulos/configuracion/ConfigurationView';
+import { NeuralNetworkView } from './src/modulos/red-neuronal/NeuralNetworkView';
+import { Icons } from './src/components/Icons';
+import { 
+    View, 
+    BotStatus, 
+    ChartType, 
+    StrategyType, 
+    MarketData, 
+    LogEntry, 
+    BinanceConfig 
+} from './src/types';
 
-// --- TYPES ---
-type View = 'DASHBOARD' | 'SETTINGS' | 'EVA_BRAIN';
-type BotStatus = 'IDLE' | 'CONNECTING' | 'ANALYZING' | 'EXECUTING' | 'HALTED';
-type ChartType = 'line' | 'candle' | 'bar' | 'area' | 'depth';
-type StrategyType = 'SCALPING_MACD' | 'SWING_RSI' | 'AI_SENTIMENT';
-
-interface MarketData {
-  price: number;
-  change24h: number;
-  high24h: number;
-  low24h: number;
-  volume: string;
-}
-
-interface LogEntry {
-  id: number;
-  timestamp: string;
-  message: string;
-  type: 'info' | 'success' | 'warning' | 'error' | 'system';
-}
-
-interface BinanceConfig {
-  email: string; // Mandatory for recovery
-  apiKey: string;
-  apiSecret: string;
-  leverage: number;
-  useTestnet: boolean;
-  maxPositionSize: number; // % of balance
-  stopLoss: number; // %
-  takeProfit: number; // %
-  strategy: StrategyType;
-  operationDuration: number; // minutes
-}
-
-// --- ICONS (SVG) ---
-const Icons = {
-  Activity: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>,
-  Bot: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 14v1"/><path d="M15 14v1"/><path d="M9 9h.01"/><path d="M15 9h.01"/></svg>,
-  Settings: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>,
-  Play: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>,
-  Stop: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>,
-  Binance: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="#F3BA2F"><path d="M16.624 13.9202l2.7175 2.7154-7.353 7.353-7.353-7.352 2.7175-2.7164 4.6355 4.6595 4.6356-4.6595zm4.6366-4.6366L24 12l-2.7154 2.7164L18.5682 12l2.6924-2.7164zm-9.272.001l2.7163 2.6914-2.7164 2.7174v-.001L9.2721 12l2.7164-2.7154zm-9.2722-.001L5.4088 12l-2.6914 2.6924L0 12l2.7164-2.7164zM11.9885.0115l7.353 7.329-2.7174 2.7154-4.6356-4.6356-4.6355 4.6355-2.7175-2.7155 7.353-7.3288z"/></svg>,
-  Chart: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>,
-  BarChart: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>,
-  Layers: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>,
-  Database: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>,
-  CloudOff: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22.61 16.95A5 5 0 0 0 18 10h-1.26a8 8 0 0 0-7.05-6M5 5a8 8 0 0 0 4 7h1.8"/><path d="M5 19a4 4 0 0 1-4-4 4 4 0 0 1 4-4"/><path d="M2 2l20 20"/></svg>,
-  Shield: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
-  Cpu: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>,
-  Save: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>,
-  User: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
-  Clock: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
-};
-
-// --- SUB-COMPONENTS ---
+// --- SUB-COMPONENTES VISUALES ---
 
 const AdvancedChart = ({ data, type }: { data: number[], type: ChartType }) => {
-  if (data.length < 2) return <div className="h-full w-full bg-slate-900/50 flex items-center justify-center text-slate-500 animate-pulse">Estableciendo conexión WebSocket...</div>;
+  if (data.length < 2) return <div className="h-full w-full bg-slate-900/50 flex items-center justify-center text-slate-500 animate-pulse font-mono text-xs">ESTABLECIENDO ENLACE WEBSOCKET...</div>;
 
   const max = Math.max(...data);
   const min = Math.min(...data);
@@ -149,13 +108,13 @@ const OrderBook = ({ price }: { price: number }) => {
 
   return (
     <div className="flex flex-col h-full text-xs font-mono">
-      <div className="flex justify-between text-slate-500 mb-2 px-1"><span>Precio</span><span>Cant.</span></div>
+      <div className="flex justify-between text-slate-500 mb-2 px-1"><span>PRECIO (USDT)</span><span>CANTIDAD</span></div>
       <div className="flex-1 flex flex-col justify-end gap-0.5 overflow-hidden">
-        {asks.map((o, i) => <div key={i} className="flex justify-between px-1 relative"><span className="text-rose-400">{o.price.toFixed(2)}</span><span className="text-slate-400">{o.size.toFixed(4)}</span></div>)}
+        {asks.map((o, i) => <div key={i} className="flex justify-between px-1 relative hover:bg-rose-900/20"><span className="text-rose-400">{o.price.toFixed(2)}</span><span className="text-slate-400">{o.size.toFixed(4)}</span></div>)}
       </div>
       <div className="py-2 text-center text-base font-bold text-white bg-slate-900/50 my-1 rounded border border-slate-800">{price.toFixed(2)}</div>
       <div className="flex-1 flex flex-col justify-start gap-0.5 overflow-hidden">
-        {bids.map((o, i) => <div key={i} className="flex justify-between px-1 relative"><span className="text-emerald-400">{o.price.toFixed(2)}</span><span className="text-slate-400">{o.size.toFixed(4)}</span></div>)}
+        {bids.map((o, i) => <div key={i} className="flex justify-between px-1 relative hover:bg-emerald-900/20"><span className="text-emerald-400">{o.price.toFixed(2)}</span><span className="text-slate-400">{o.size.toFixed(4)}</span></div>)}
       </div>
     </div>
   );
@@ -184,282 +143,12 @@ const BotTerminal = ({ logs, status }: { logs: LogEntry[], status: BotStatus }) 
   );
 };
 
-// --- CONFIGURATION VIEW ---
-
-const ConfigurationView = ({ 
-    config, 
-    setConfig, 
-    dbConnected,
-    onSave
-}: { 
-    config: BinanceConfig, 
-    setConfig: (c: BinanceConfig) => void,
-    dbConnected: boolean,
-    onSave: () => void
-}) => {
-    const [saved, setSaved] = useState(false);
-    const [isSaving, setIsSaving] = useState(false);
-    const [validationError, setValidationError] = useState<string | null>(null);
-
-    const handleSaveClick = async () => {
-        if (!config.email || config.email.trim() === '') {
-            setValidationError("El correo electrónico es OBLIGATORIO para recuperación.");
-            return;
-        }
-        setValidationError(null);
-        setIsSaving(true);
-        await onSave();
-        setIsSaving(false);
-        setSaved(true);
-        setTimeout(() => setSaved(false), 2000);
-    };
-
-    return (
-        <div className="flex-1 p-6 md:p-8 overflow-y-auto bg-slate-950">
-            <div className="max-w-4xl mx-auto space-y-8">
-                {/* Header */}
-                <div className="border-b border-slate-800 pb-6 flex justify-between items-end">
-                    <div>
-                        <h2 className="text-3xl font-bold text-white flex items-center gap-3">
-                            <Icons.Settings /> CONFIGURACIÓN DEL SISTEMA
-                        </h2>
-                        <p className="text-slate-500 mt-2 font-mono text-sm">Versión del protocolo: EVA v10.5.2 // Acceso Administrativo</p>
-                    </div>
-                    {dbConnected ? 
-                        <span className="px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-full text-xs font-bold flex items-center gap-2"><Icons.Database /> DB SINCRONIZADA</span> :
-                        <span className="px-3 py-1 bg-rose-500/10 border border-rose-500/30 text-rose-400 rounded-full text-xs font-bold flex items-center gap-2"><Icons.CloudOff /> DB DESCONECTADA</span>
-                    }
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-
-                    {/* SECTION 0: IDENTITY (MANDATORY) */}
-                    <div className="md:col-span-2 space-y-6">
-                        <div className="flex items-center gap-2 text-emerald-400 mb-2 border-b border-slate-800 pb-2">
-                            <Icons.User /> <h3 className="font-bold tracking-wider">IDENTIDAD DEL OPERADOR</h3>
-                        </div>
-                        
-                        <div className="bg-slate-900/50 p-6 rounded-xl border border-slate-800 space-y-4">
-                            <div>
-                                <label className="block text-xs font-bold text-slate-400 mb-2 uppercase flex justify-between">
-                                    <span>Correo de Recuperación</span>
-                                    <span className="text-rose-500 text-[10px] tracking-wider font-bold border border-rose-500/30 px-1 rounded bg-rose-500/10">OBLIGATORIO</span>
-                                </label>
-                                <div className="relative">
-                                    <input 
-                                        type="email" 
-                                        value={config.email}
-                                        onChange={(e) => {
-                                            setConfig({...config, email: e.target.value});
-                                            if (e.target.value) setValidationError(null);
-                                        }}
-                                        className={`w-full bg-slate-950 border ${validationError && !config.email ? 'border-rose-500 ring-1 ring-rose-500' : 'border-slate-700'} rounded-lg p-3 text-sm text-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none transition-all font-mono`}
-                                        placeholder="usuario@ejemplo.com"
-                                    />
-                                    {validationError && !config.email && (
-                                        <div className="absolute right-3 top-3 text-rose-500 animate-pulse text-xs font-bold">REQUERIDO</div>
-                                    )}
-                                </div>
-                                <p className="text-[10px] text-slate-500 mt-2">
-                                    * Este correo es el único método para recuperar el acceso y la configuración de sus estrategias en caso de pérdida de sesión.
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    {/* LEFT COLUMN: API + TIME */}
-                    <div className="space-y-8">
-                        {/* SECTION 1: API CONNECTION */}
-                        <div className="space-y-6">
-                            <div className="flex items-center gap-2 text-yellow-400 mb-2 border-b border-slate-800 pb-2">
-                                <Icons.Binance /> <h3 className="font-bold tracking-wider">CONEXIÓN EXCHANGE</h3>
-                            </div>
-                            
-                            <div className="bg-slate-900/50 p-6 rounded-xl border border-slate-800 space-y-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-400 mb-2 uppercase">API Key (Solo Lectura/Trading)</label>
-                                    <div className="relative">
-                                        <input 
-                                            type="password" 
-                                            value={config.apiKey}
-                                            onChange={(e) => setConfig({...config, apiKey: e.target.value})}
-                                            className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-sm text-yellow-400 focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 outline-none transition-all font-mono"
-                                            placeholder="Ingrese su clave API..."
-                                        />
-                                        <div className="absolute right-3 top-3 text-slate-600"><Icons.Shield /></div>
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-400 mb-2 uppercase">Secret Key</label>
-                                    <input 
-                                        type="password" 
-                                        value={config.apiSecret}
-                                        onChange={(e) => setConfig({...config, apiSecret: e.target.value})}
-                                        className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-sm text-yellow-400 focus:border-yellow-500 outline-none font-mono"
-                                        placeholder="Ingrese su clave secreta..."
-                                    />
-                                </div>
-                                <div className="flex items-center justify-between pt-2">
-                                    <span className="text-sm text-slate-300">Modo Testnet (Sandbox)</span>
-                                    <button 
-                                        onClick={() => setConfig({...config, useTestnet: !config.useTestnet})}
-                                        className={`w-12 h-6 rounded-full transition-colors relative ${config.useTestnet ? 'bg-yellow-500' : 'bg-slate-700'}`}
-                                    >
-                                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all shadow-md ${config.useTestnet ? 'left-7' : 'left-1'}`}></div>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* SECTION 4: TIME CONFIG (NEW) */}
-                        <div className="space-y-6">
-                            <div className="flex items-center gap-2 text-purple-400 mb-2 border-b border-slate-800 pb-2">
-                                <Icons.Clock /> <h3 className="font-bold tracking-wider">TEMPORIZADOR DE MISIÓN</h3>
-                            </div>
-                            
-                            <div className="bg-slate-900/50 p-6 rounded-xl border border-slate-800 space-y-4">
-                                <div>
-                                    <div className="flex justify-between mb-2">
-                                        <label className="text-xs font-bold text-slate-400 uppercase">Duración de Sesión</label>
-                                        <span className="text-xs font-mono text-white bg-slate-800 px-2 py-0.5 rounded">
-                                            {config.operationDuration < 60 
-                                                ? `${config.operationDuration} min` 
-                                                : `${(config.operationDuration / 60).toFixed(1)} Horas`}
-                                        </span>
-                                    </div>
-                                    <input 
-                                        type="range" min="15" max="1440" step="15"
-                                        value={config.operationDuration}
-                                        onChange={(e) => setConfig({...config, operationDuration: parseInt(e.target.value)})}
-                                        className="w-full accent-purple-500 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer"
-                                    />
-                                    <div className="flex justify-between text-[10px] text-slate-600 font-mono mt-1">
-                                        <span>15m</span>
-                                        <span>12h</span>
-                                        <span>24h</span>
-                                    </div>
-                                    <p className="text-[10px] text-slate-500 mt-2">
-                                        * EVA detendrá automáticamente la ejecución y cerrará posiciones al finalizar este periodo.
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                     {/* RIGHT COLUMN: RISK MANAGEMENT */}
-                     <div className="space-y-6">
-                        <div className="flex items-center gap-2 text-rose-400 mb-2 border-b border-slate-800 pb-2">
-                            <Icons.Shield /> <h3 className="font-bold tracking-wider">PROTOCOLOS DE RIESGO</h3>
-                        </div>
-                        
-                        <div className="bg-slate-900/50 p-6 rounded-xl border border-slate-800 space-y-6">
-                            <div>
-                                <div className="flex justify-between mb-2">
-                                    <label className="text-xs font-bold text-slate-400 uppercase">Apalancamiento (Leverage)</label>
-                                    <span className="text-xs font-mono text-white bg-slate-800 px-2 py-0.5 rounded">{config.leverage}x</span>
-                                </div>
-                                <input 
-                                    type="range" min="1" max="125" step="1"
-                                    value={config.leverage}
-                                    onChange={(e) => setConfig({...config, leverage: parseInt(e.target.value)})}
-                                    className="w-full accent-rose-500 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer"
-                                />
-                            </div>
-
-                            <div className="grid grid-cols-1 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-400 mb-2 uppercase">Stop Loss (%)</label>
-                                    <input 
-                                        type="number" step="0.1"
-                                        value={config.stopLoss}
-                                        onChange={(e) => setConfig({...config, stopLoss: parseFloat(e.target.value)})}
-                                        className="w-full bg-slate-950 border border-slate-700 rounded p-3 text-sm text-white focus:border-rose-500 outline-none"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-400 mb-2 uppercase">Take Profit (%)</label>
-                                    <input 
-                                        type="number" step="0.1"
-                                        value={config.takeProfit}
-                                        onChange={(e) => setConfig({...config, takeProfit: parseFloat(e.target.value)})}
-                                        className="w-full bg-slate-950 border border-slate-700 rounded p-3 text-sm text-white focus:border-emerald-500 outline-none"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-400 mb-2 uppercase">Max Posición (% Saldo)</label>
-                                    <input 
-                                        type="number" step="1" max="100"
-                                        value={config.maxPositionSize}
-                                        onChange={(e) => setConfig({...config, maxPositionSize: parseFloat(e.target.value)})}
-                                        className="w-full bg-slate-950 border border-slate-700 rounded p-3 text-sm text-white focus:border-blue-500 outline-none"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* SECTION 3: STRATEGY CORE */}
-                    <div className="md:col-span-2 space-y-6">
-                        <div className="flex items-center gap-2 text-blue-400 mb-2 border-b border-slate-800 pb-2">
-                            <Icons.Cpu /> <h3 className="font-bold tracking-wider">NÚCLEO NEURONAL (ESTRATEGIA)</h3>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            {[
-                                { id: 'SCALPING_MACD', name: 'Scalping H.F.', desc: 'Alta frecuencia. Basado en MACD y Bollinger. Riesgo Medio.', color: 'border-yellow-500/50 bg-yellow-500/10' },
-                                { id: 'SWING_RSI', name: 'Swing Momentum', desc: 'Operaciones a mediano plazo. Cruces de RSI y medias móviles. Riesgo Bajo.', color: 'border-blue-500/50 bg-blue-500/10' },
-                                { id: 'AI_SENTIMENT', name: 'EVA Sentiment AI', desc: 'Análisis de sentimiento de mercado + Order Flow. Experimental.', color: 'border-purple-500/50 bg-purple-500/10' }
-                            ].map((strat) => (
-                                <div 
-                                    key={strat.id}
-                                    onClick={() => setConfig({...config, strategy: strat.id as StrategyType})}
-                                    className={`p-4 rounded-xl border-2 cursor-pointer transition-all hover:scale-[1.02] ${config.strategy === strat.id ? strat.color : 'border-slate-800 bg-slate-900/30 hover:bg-slate-900'}`}
-                                >
-                                    <div className="flex justify-between items-start mb-2">
-                                        <h4 className="font-bold text-white">{strat.name}</h4>
-                                        <div className={`w-4 h-4 rounded-full border-2 ${config.strategy === strat.id ? 'bg-white border-transparent' : 'border-slate-600'}`}></div>
-                                    </div>
-                                    <p className="text-xs text-slate-400 leading-relaxed">{strat.desc}</p>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-
-                {validationError && (
-                    <div className="p-4 bg-rose-500/10 border border-rose-500/50 rounded-lg flex items-center gap-3 text-rose-400 animate-pulse">
-                        <Icons.Shield />
-                        <span className="font-bold text-sm">{validationError}</span>
-                    </div>
-                )}
-
-                <div className="pt-8 flex justify-end">
-                    <button 
-                        onClick={handleSaveClick}
-                        disabled={isSaving}
-                        className={`px-8 py-3 rounded-lg font-bold flex items-center gap-3 transition-all ${saved ? 'bg-emerald-500 text-white' : 'bg-white text-black hover:bg-slate-200'} ${isSaving ? 'opacity-50 cursor-wait' : ''}`}
-                    >
-                        {isSaving ? (
-                            <>GUARDANDO EN DB...</>
-                        ) : (
-                            <>
-                                <Icons.Save />
-                                {saved ? 'CONFIGURACIÓN GUARDADA' : 'GUARDAR CAMBIOS'}
-                            </>
-                        )}
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// --- SPLASH SCREEN ---
+// --- PANTALLA DE CARGA ---
 const SplashScreen = () => (
     <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center">
         <div className="flex flex-col items-center gap-6">
             <span className="text-sm md:text-base text-yellow-500 font-mono tracking-[0.3em] uppercase animate-pulse">
-                CARGANDO SISTEMA EVA v10.5
+                INICIALIZANDO EVA v10.5
             </span>
             <div className="flex gap-1.5">
                 <div className="w-2 h-2 bg-yellow-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
@@ -470,7 +159,7 @@ const SplashScreen = () => (
     </div>
 );
 
-// --- MAIN APP ---
+// --- COMPONENTE PRINCIPAL ---
 
 export default function App() {
   const [currentView, setCurrentView] = useState<View>('DASHBOARD');
@@ -484,10 +173,10 @@ export default function App() {
   const [dbConnected, setDbConnected] = useState<boolean>(false);
   
   const [binanceConfig, setBinanceConfig] = useState<BinanceConfig>({
-    email: '', // Initialize empty
+    email: '', 
     apiKey: '', apiSecret: '', leverage: 20, useTestnet: false,
     maxPositionSize: 10, stopLoss: 1.5, takeProfit: 3.0, strategy: 'SCALPING_MACD',
-    operationDuration: 60 // Default 60 minutes
+    operationDuration: 60 
   });
 
   const [logs, setLogs] = useState<LogEntry[]>([
@@ -497,24 +186,16 @@ export default function App() {
   const addLog = async (message: string, type: 'info' | 'success' | 'warning' | 'error' | 'system' = 'info') => {
     const entry: LogEntry = { id: Date.now() + Math.random(), timestamp: new Date().toLocaleTimeString(), message, type };
     setLogs(prev => [...prev.slice(-49), entry]);
-    if (dbConnected) {
-        // Optional: Save logs to DB if needed, removed for brevity/perf
-    }
   };
 
-  // INITIALIZATION & DB CONFIG LOAD
   useEffect(() => {
     const initSystem = async () => {
         try {
-            // 1. Check DB Connection
             const { error: healthError } = await supabase.from('bot_config').select('id', { count: 'exact', head: true });
             
             if (!healthError) {
                 setDbConnected(true);
-                
-                // 2. Fetch Config
                 const { data, error } = await supabase.from('bot_config').select('*').single();
-                
                 if (data && !error) {
                     setBinanceConfig({
                         email: data.email || '',
@@ -537,10 +218,9 @@ export default function App() {
             }
         } catch (e) {
             console.error(e);
-            addLog('Error crítico al inicializar.', 'error');
+            addLog('Error crítico al inicializar subsistemas.', 'error');
         } finally {
-            // Artificial delay to show the "Hola Mundo" splash screen
-            setTimeout(() => setLoading(false), 2500);
+            setTimeout(() => setLoading(false), 2000);
         }
     };
 
@@ -554,8 +234,8 @@ export default function App() {
     }
     try {
         const { error } = await supabase.from('bot_config').upsert({
-            id: 1, // Singleton ID
-            email: binanceConfig.email, // Save email
+            id: 1, 
+            email: binanceConfig.email,
             api_key: binanceConfig.apiKey,
             api_secret: binanceConfig.apiSecret,
             leverage: binanceConfig.leverage,
@@ -569,10 +249,10 @@ export default function App() {
         });
 
         if (error) throw error;
-        addLog('Configuración guardada exitosamente en la nube.', 'success');
+        addLog('Configuración encriptada y guardada en la nube.', 'success');
     } catch (e) {
         console.error(e);
-        addLog('Error al guardar configuración.', 'error');
+        addLog('Fallo al persistir configuración.', 'error');
     }
   };
 
@@ -605,7 +285,11 @@ export default function App() {
 
   const toggleBot = () => {
     if (botStatus === 'IDLE' || botStatus === 'HALTED') {
-      if (!binanceConfig.apiKey) { setCurrentView('SETTINGS'); addLog('Error: Configure API Keys primero.', 'error'); return; }
+      if (!binanceConfig.apiKey && !binanceConfig.useTestnet) { 
+        setCurrentView('SETTINGS'); 
+        addLog('Error: Configure API Keys primero.', 'error'); 
+        return; 
+      }
       setBotStatus('CONNECTING');
       addLog(`Conectando a ${binanceConfig.useTestnet ? 'Testnet' : 'Mainnet'}...`, 'system');
       setTimeout(() => {
@@ -614,6 +298,7 @@ export default function App() {
       }, 2000);
     } else {
       setBotStatus('HALTED');
+      addLog('Secuencia de parada iniciada...', 'warning');
       setTimeout(() => setBotStatus('IDLE'), 1000);
     }
   };
@@ -625,14 +310,15 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 flex flex-col md:flex-row font-sans selection:bg-yellow-500/30">
       {/* SIDEBAR */}
-      <aside className="w-full md:w-20 md:h-screen md:sticky md:top-0 bg-slate-900 border-r border-slate-800 flex flex-row md:flex-col items-center py-4 gap-6 z-20 shrink-0 overflow-x-auto justify-center md:justify-start">
-        <div className="h-10 w-10 bg-yellow-500/10 rounded-xl flex items-center justify-center border border-yellow-500/50 shadow-[0_0_15px_rgba(234,179,8,0.2)] shrink-0 cursor-pointer" onClick={() => setCurrentView('DASHBOARD')}>
+      <aside className="w-full md:w-20 md:h-screen md:sticky md:top-0 bg-slate-900 border-r border-slate-800 flex flex-row md:flex-col items-center py-4 gap-6 z-20 shrink-0 overflow-x-auto justify-center md:justify-start scrollbar-hide">
+        <div className="h-10 w-10 bg-yellow-500/10 rounded-xl flex items-center justify-center border border-yellow-500/50 shadow-[0_0_15px_rgba(234,179,8,0.2)] shrink-0 cursor-pointer hover:scale-105 transition-transform" onClick={() => setCurrentView('DASHBOARD')}>
            <Icons.Binance />
         </div>
         <nav className="flex flex-row md:flex-col gap-4 md:gap-8">
           <button 
             onClick={() => setCurrentView('DASHBOARD')}
             className={`p-3 rounded-lg transition-all ${currentView === 'DASHBOARD' ? 'bg-slate-800 text-yellow-400 shadow-inner shadow-yellow-900/20' : 'text-slate-500 hover:text-slate-200'}`}
+            title="Panel de Control"
           >
             <Icons.Activity />
           </button>
@@ -646,8 +332,17 @@ export default function App() {
           </button>
 
           <button 
+            onClick={() => setCurrentView('NEURAL_NET')}
+            className={`p-3 rounded-lg transition-all ${currentView === 'NEURAL_NET' ? 'bg-slate-800 text-purple-400 shadow-inner shadow-purple-900/20' : 'text-slate-500 hover:text-slate-200'}`}
+            title="Red Neuronal"
+          >
+            <Icons.Brain />
+          </button>
+
+          <button 
             onClick={() => setCurrentView('SETTINGS')}
             className={`p-3 rounded-lg transition-all ${currentView === 'SETTINGS' ? 'bg-slate-800 text-yellow-400 shadow-inner shadow-yellow-900/20' : 'text-slate-500 hover:text-slate-200'}`}
+            title="Configuración"
           >
             <Icons.Settings />
           </button>
@@ -656,7 +351,7 @@ export default function App() {
 
       {/* MAIN CONTENT */}
       <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
-        {/* HEADER (Conditional or Shared) */}
+        {/* HEADER */}
         {currentView === 'DASHBOARD' && (
         <header className="h-16 border-b border-slate-800 bg-slate-950/50 flex items-center justify-between px-4 sm:px-6 backdrop-blur-sm shrink-0 z-10">
           <div className="flex items-center gap-4">
@@ -667,13 +362,13 @@ export default function App() {
           <div className="flex items-center gap-4">
             <div className={`flex items-center gap-2 px-3 py-1 rounded-full border ${dbConnected ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-rose-500/30 bg-rose-500/10'}`}>
                 {dbConnected ? <span className="text-emerald-400"><Icons.Database /></span> : <span className="text-rose-400"><Icons.CloudOff /></span>}
-                <span className={`text-xs font-bold ${dbConnected ? 'text-emerald-400' : 'text-rose-400'}`}>{dbConnected ? 'DB: ON' : 'DB: OFF'}</span>
+                <span className={`text-xs font-bold ${dbConnected ? 'text-emerald-400' : 'text-rose-400'} hidden sm:inline`}>{dbConnected ? 'DB: ON' : 'DB: OFF'}</span>
             </div>
             <div className="text-right hidden md:block">
               <div className="text-xs text-slate-500">Balance (BTC)</div>
               <div className="text-lg font-mono font-bold text-white">1.2405</div>
             </div>
-            <div className="h-10 w-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center"><span className="font-bold text-xs text-yellow-500">EVA</span></div>
+            <div className="h-10 w-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center shadow-lg"><span className="font-bold text-xs text-yellow-500">EVA</span></div>
           </div>
         </header>
         )}
@@ -683,6 +378,8 @@ export default function App() {
             <ConfigurationView config={binanceConfig} setConfig={setBinanceConfig} dbConnected={dbConnected} onSave={saveConfigToDb} />
         ) : currentView === 'EVA_BRAIN' ? (
            <EvaCore />
+        ) : currentView === 'NEURAL_NET' ? (
+           <NeuralNetworkView />
         ) : (
             <div className="flex-1 p-4 grid grid-cols-1 lg:grid-cols-12 gap-4 overflow-y-auto">
                 <div className="lg:col-span-9 flex flex-col gap-4">
