@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './supabaseClient';
+import { EvaCore } from './modulos/eva/EvaCore';
 
 // --- TYPES ---
-type View = 'DASHBOARD' | 'SETTINGS';
+type View = 'DASHBOARD' | 'SETTINGS' | 'EVA_BRAIN';
 type BotStatus = 'IDLE' | 'CONNECTING' | 'ANALYZING' | 'EXECUTING' | 'HALTED';
 type ChartType = 'line' | 'candle' | 'bar' | 'area' | 'depth';
 type StrategyType = 'SCALPING_MACD' | 'SWING_RSI' | 'AI_SENTIMENT';
@@ -635,6 +636,15 @@ export default function App() {
           >
             <Icons.Activity />
           </button>
+          
+          <button 
+            onClick={() => setCurrentView('EVA_BRAIN')}
+            className={`p-3 rounded-lg transition-all ${currentView === 'EVA_BRAIN' ? 'bg-slate-800 text-yellow-400 shadow-inner shadow-yellow-900/20' : 'text-slate-500 hover:text-slate-200'}`}
+            title="EVA Core"
+          >
+            <Icons.Bot />
+          </button>
+
           <button 
             onClick={() => setCurrentView('SETTINGS')}
             className={`p-3 rounded-lg transition-all ${currentView === 'SETTINGS' ? 'bg-slate-800 text-yellow-400 shadow-inner shadow-yellow-900/20' : 'text-slate-500 hover:text-slate-200'}`}
@@ -671,6 +681,8 @@ export default function App() {
         {/* VIEW ROUTING */}
         {currentView === 'SETTINGS' ? (
             <ConfigurationView config={binanceConfig} setConfig={setBinanceConfig} dbConnected={dbConnected} onSave={saveConfigToDb} />
+        ) : currentView === 'EVA_BRAIN' ? (
+           <EvaCore />
         ) : (
             <div className="flex-1 p-4 grid grid-cols-1 lg:grid-cols-12 gap-4 overflow-y-auto">
                 <div className="lg:col-span-9 flex flex-col gap-4">
