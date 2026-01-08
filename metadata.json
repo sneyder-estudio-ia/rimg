@@ -1,5 +1,5 @@
 {
-  "name": "Hola Mundo Dark",
-  "description": "Una aplicación minimalista en modo oscuro mostrando Hola Mundo centrado.",
+  "name": "EVA v10.5 | Trading Bot",
+  "description": "Sistema autónomo de trading de alta frecuencia con integración Supabase y análisis en tiempo real.",
   "requestFramePermissions": []
 }
