@@ -8,29 +8,48 @@ import { HolaMundoView } from './src/modulos/hola-mundo/HolaMundoView';
 import { Icons } from './src/components/Icons';
 import { BinanceConfig, AssetConfig, View } from './src/types';
 
+// Configuración por defecto para inicialización
+const DEFAULT_CONFIG: BinanceConfig = {
+  email: '',
+  apiKey: '',
+  apiSecret: '',
+  leverage: 20,
+  useTestnet: false,
+  maxPositionSize: 10,
+  stopLoss: 2.0,
+  takeProfit: 5.0,
+  strategy: 'SCALPING_MACD',
+  operationDuration: 60,
+  autonomousMode: false
+};
+
 export default function App() {
   const [currentView, setCurrentView] = useState<View>('DASHBOARD');
   const [dbConnected, setDbConnected] = useState(false);
   
-  // Estado Global de Configuración
-  const [config, setConfig] = useState<BinanceConfig>({
-    email: '',
-    apiKey: '',
-    apiSecret: '',
-    leverage: 20,
-    useTestnet: false,
-    maxPositionSize: 10,
-    stopLoss: 2.0,
-    takeProfit: 5.0,
-    strategy: 'SCALPING_MACD',
-    operationDuration: 60,
-    autonomousMode: false
+  // --- ESTADO GLOBAL CON PERSISTENCIA (LOCALSTORAGE) ---
+  
+  // 1. Configuración Global (Inicialización Lazy)
+  const [config, setConfig] = useState<BinanceConfig>(() => {
+    try {
+      const saved = localStorage.getItem('eva_config_v10');
+      return saved ? JSON.parse(saved) : DEFAULT_CONFIG;
+    } catch (e) {
+      return DEFAULT_CONFIG;
+    }
   });
 
-  // Estado Global de Activos (Persistencia de Protocolo)
-  const [assetConfigs, setAssetConfigs] = useState<AssetConfig[]>([]);
+  // 2. Matriz de Activos (Inicialización Lazy)
+  const [assetConfigs, setAssetConfigs] = useState<AssetConfig[]>(() => {
+    try {
+      const saved = localStorage.getItem('eva_assets_v10');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
 
-  // Estado Simulado de Balance (Se pasará al Gestor de Activos)
+  // Estado Simulado de Balance
   const [accountBalance, setAccountBalance] = useState([
     { asset: 'USDT', free: '5420.50', locked: '1200.00' },
     { asset: 'BTC', free: '0.045', locked: '0.00' },
@@ -38,7 +57,19 @@ export default function App() {
     { asset: 'SOL', free: '15.0', locked: '0.0' }
   ]);
 
-  // Verificación de conexión a Supabase al inicio
+  // --- EFECTOS DE PERSISTENCIA ---
+  
+  // Guardar Configuración al detectar cambios
+  useEffect(() => {
+    localStorage.setItem('eva_config_v10', JSON.stringify(config));
+  }, [config]);
+
+  // Guardar Activos al detectar cambios
+  useEffect(() => {
+    localStorage.setItem('eva_assets_v10', JSON.stringify(assetConfigs));
+  }, [assetConfigs]);
+
+  // Verificación de conexión a Supabase
   useEffect(() => {
     const checkConnection = async () => {
       try {
@@ -52,18 +83,18 @@ export default function App() {
   }, []);
 
   const handleSaveConfig = async () => {
-    console.log("Configuración guardada en memoria local y lista para sync:", config);
+    console.log("SYNC: Configuración guardada y persistida.");
+    // Aquí se podría agregar lógica para guardar en Supabase también
   };
 
   const handleSaveAssets = (assets: AssetConfig[]) => {
-    console.log("Matriz de activos actualizada y persistida en Memoria RAM:", assets);
+    console.log("SYNC: Matriz de activos actualizada.");
     setAssetConfigs(assets);
   };
 
   const renderContent = () => {
     switch (currentView) {
       case 'DASHBOARD':
-        // PASAMOS LA CONFIGURACIÓN REAL AL NÚCLEO PARA TRADING EN VIVO
         return <EvaCore config={config} />;
       case 'EVA_BRAIN':
         return <NeuralNetworkView />;
@@ -82,6 +113,9 @@ export default function App() {
             accountBalance={accountBalance}
             savedAssetConfigs={assetConfigs}
             onSaveConfig={handleSaveAssets}
+            autonomousMode={config.autonomousMode}
+            onToggleAutoMode={(val) => setConfig(prev => ({ ...prev, autonomousMode: val }))}
+            onNavigate={() => setCurrentView('DASHBOARD')} // INYECCIÓN DE DEPENDENCIA DE NAVEGACIÓN
           />
         );
       case 'HOLA_MUNDO':

@@ -17,6 +17,7 @@ interface NeuralConfig {
     arbitrageScanner: boolean; // (Placeholder)
     darkPoolDetection: boolean;// (Placeholder)
     quantumMode: boolean;      // Invierte lógica (Contrarian Trading)
+    autoLoop: boolean;         // PERSISTENCIA: Estado del Bucle Automático
 }
 
 export const NeuralNetworkView = () => {
@@ -24,28 +25,45 @@ export const NeuralNetworkView = () => {
     const [memories, setMemories] = useState<NeuralMemory[]>([]);
     const [livePrice, setLivePrice] = useState<number>(0);
     const [liveRsi, setLiveRsi] = useState<number>(50);
+    const [lastAction, setLastAction] = useState<string | null>(null); // Feedback visual
     
     // --- ESTADO DEL SISTEMA ---
     const [loading, setLoading] = useState(true);
     const [processing, setProcessing] = useState(false);
-    const [autoLoop, setAutoLoop] = useState(false); // BUCLE CORTICAL
+    // const [autoLoop, setAutoLoop] = useState(false); // ELIMINADO: Ahora vive en config
     const [globalAccuracy, setGlobalAccuracy] = useState(0);
     
     const processingRef = useRef(false); // Ref para evitar race conditions en el loop
     
-    // --- ESTADO DE LAS 10 HABILIDADES ---
-    const [config, setConfig] = useState<NeuralConfig>({
-        learningRate: 0.65, 
-        riskTolerance: 50,  
-        sentimentAnalysis: true,
-        whaleTracking: true,
-        patternRecognition: true,
-        newsIntegration: false,
-        volatilityShield: true,
-        arbitrageScanner: false,
-        darkPoolDetection: false,
-        quantumMode: false
+    // --- ESTADO DE LAS 10 HABILIDADES CON PERSISTENCIA ---
+    const [config, setConfig] = useState<NeuralConfig>(() => {
+        const defaults: NeuralConfig = {
+            learningRate: 0.65, 
+            riskTolerance: 50,  
+            sentimentAnalysis: true,
+            whaleTracking: true,
+            patternRecognition: true,
+            newsIntegration: false,
+            volatilityShield: true,
+            arbitrageScanner: false,
+            darkPoolDetection: false,
+            quantumMode: false,
+            autoLoop: false // Inicialización por defecto en persistencia
+        };
+        
+        try {
+            const saved = localStorage.getItem('eva_neural_config_v10');
+            return saved ? { ...defaults, ...JSON.parse(saved) } : defaults;
+        } catch (e) {
+            console.error("Error recuperando memoria neuronal local:", e);
+            return defaults;
+        }
     });
+
+    // --- EFECTO DE PERSISTENCIA AUTOMÁTICA ---
+    useEffect(() => {
+        localStorage.setItem('eva_neural_config_v10', JSON.stringify(config));
+    }, [config]);
 
     // --- REF DE CONFIGURACIÓN VIVA (CRÍTICO PARA EL BUCLE) ---
     const configRef = useRef(config);
@@ -62,12 +80,16 @@ export const NeuralNetworkView = () => {
     useEffect(() => {
         fetchMemories();
         
+        // Suscripción Realtime a nuevos inserts en Supabase
         const channel = supabase
             .channel('public:eva_collective_memory')
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'eva_collective_memory' }, 
                 (payload) => {
                     const newMem = payload.new as NeuralMemory;
                     setMemories(prev => [newMem, ...prev].slice(0, 50));
+                    // Feedback de "Pulso" cuando llega memoria externa
+                    setLastAction(`SINC: ${newMem.decision} (${newMem.strategy_used})`);
+                    setTimeout(() => setLastAction(null), 3000);
                 }
             )
             .subscribe();
@@ -85,7 +107,8 @@ export const NeuralNetworkView = () => {
     // --- 2. LOOP CORTICAL (AUTO-ANÁLISIS) ---
     useEffect(() => {
         let interval: any;
-        if (autoLoop) {
+        // Ahora usamos config.autoLoop en lugar del estado local
+        if (config.autoLoop) {
             analyzeMarketReal(); 
             interval = setInterval(() => {
                 if (!processingRef.current) {
@@ -94,7 +117,7 @@ export const NeuralNetworkView = () => {
             }, 10000);
         }
         return () => clearInterval(interval);
-    }, [autoLoop]);
+    }, [config.autoLoop]); // Dependencia actualizada a la config persistente
 
     // --- 3. CÁLCULO DE PRECISIÓN REAL ---
     useEffect(() => {
@@ -128,15 +151,19 @@ export const NeuralNetworkView = () => {
     const fetchMemories = async () => {
         setLoading(true);
         try {
-            const { data } = await supabase
+            const { data, error } = await supabase
                 .from('eva_collective_memory')
                 .select('*')
                 .order('created_at', { ascending: false })
                 .limit(50);
 
+            if (error) throw error;
             if (data) setMemories(data);
-        } catch (e) {
+        } catch (e: any) {
             console.error("Error conectando con el núcleo neuronal:", e);
+            if (e.code === '42P01') { // Undefined Table
+                setLastAction("ERROR CRÍTICO: FALTA TABLA SQL");
+            }
         } finally {
             setLoading(false);
         }
@@ -151,6 +178,7 @@ export const NeuralNetworkView = () => {
         try {
             const currentConfig = configRef.current;
 
+            // Obtener velas reales de Binance
             const candles = await getCandles('BTCUSDT', '15m', 50);
             if (candles.length < 20) throw new Error("Datos insuficientes de Binance");
 
@@ -158,12 +186,14 @@ export const NeuralNetworkView = () => {
             const volumes = candles.map(c => c.volume);
             const currentPrice = closePrices[closePrices.length - 1];
 
+            // Cálculos Matemáticos Locales
             const rsi = calculateRSI(closePrices, 14);
             const volatility = calculateVolatility(closePrices.slice(-10));
             const isWhale = detectWhaleActivity(volumes);
 
             setLiveRsi(rsi);
 
+            // --- SISTEMA DE PUNTUACIÓN DE DECISIÓN ---
             let score = 0;
 
             if (currentConfig.sentimentAnalysis) {
@@ -179,14 +209,15 @@ export const NeuralNetworkView = () => {
             }
 
             if (currentConfig.volatilityShield && volatility > (currentPrice * 0.005)) {
-                score = score * 0.6;
+                score = score * 0.6; // Reducir confianza si hay mucha volatilidad
             }
 
-            if (currentConfig.quantumMode) score = -score;
+            if (currentConfig.quantumMode) score = -score; // Invertir lógica
 
             const threshold = 100 - currentConfig.riskTolerance; 
             let decision = 'HOLD';
             
+            // Umbrales de decisión
             if (score > (threshold / 3)) decision = 'LONG';
             if (score < -(threshold / 3)) decision = 'SHORT';
 
@@ -206,11 +237,31 @@ export const NeuralNetworkView = () => {
                     confidence_level: confidence
                 };
 
-                await supabase.from('eva_collective_memory').insert([newMemory]);
+                // --- INSERTAR EN SUPABASE ---
+                const { error } = await supabase.from('eva_collective_memory').insert([newMemory]);
+                
+                if (error) throw error;
+
+                // Notificación Visual
+                setLastAction(`NUEVA MEMORIA: ${decision}`);
+                setTimeout(() => setLastAction(null), 3000);
+                
+                // Recargar para asegurar sincronía
+                fetchMemories();
+            } else {
+                setLastAction("MERCADO NEUTRAL - ESPERANDO");
+                setTimeout(() => setLastAction(null), 2000);
             }
 
-        } catch (e) {
+        } catch (e: any) {
             console.error("Fallo en el análisis neuronal:", e);
+            // Detección específica de errores de esquema (Column missing)
+            if (e.message && e.message.includes('column') && e.message.includes('does not exist')) {
+                 setLastAction("ERROR SQL: ACTUALIZA LA DB");
+            } else {
+                 setLastAction("ERROR: FALLO DE CONEXIÓN DB");
+            }
+            setTimeout(() => setLastAction(null), 4000);
         } finally {
             setProcessing(false);
             processingRef.current = false;
@@ -218,9 +269,7 @@ export const NeuralNetworkView = () => {
     };
 
     // --- COMPONENTE INTERRUPTOR REPARADO ---
-    // Usamos switch case explícito para que Tailwind no purgue las clases
     const AbilityToggle = ({ label, active, onClick, color = "emerald" }: { label: string, active: boolean, onClick: () => void, color?: string }) => {
-        
         const getStyles = (c: string) => {
             switch(c) {
                 case 'blue': return { bg: 'bg-blue-500/10', border: 'border-blue-500/50', dot: 'bg-blue-500', shadow: 'shadow-[0_0_10px_rgba(59,130,246,0.1)]' };
@@ -255,6 +304,14 @@ export const NeuralNetworkView = () => {
         <div className="flex-1 h-full bg-slate-950 p-4 md:p-8 overflow-y-auto font-sans relative custom-scrollbar">
             <div className="max-w-7xl mx-auto space-y-6 relative z-10">
                 
+                {/* TOAST DE ACCIÓN NEURONAL (FLOTANTE) */}
+                {lastAction && (
+                    <div className="fixed top-24 right-8 z-50 bg-slate-900/90 border border-slate-700 text-white px-4 py-2 rounded-lg shadow-2xl flex items-center gap-2 animate-in slide-in-from-right-10 fade-in duration-300 backdrop-blur-md">
+                        <div className={`w-2 h-2 rounded-full ${lastAction.includes('ERROR') ? 'bg-rose-500' : 'bg-emerald-500'} animate-pulse`}></div>
+                        <span className="text-xs font-mono font-bold">{lastAction}</span>
+                    </div>
+                )}
+
                 {/* Header */}
                 <div className="flex flex-col md:flex-row justify-between items-end border-b border-slate-800 pb-4">
                     <div>
@@ -294,14 +351,14 @@ export const NeuralNetworkView = () => {
                                 <div className={`${liveRsi > 70 ? 'text-rose-400' : liveRsi < 30 ? 'text-emerald-400' : 'text-yellow-400'}`}>
                                     RSI (14): {liveRsi.toFixed(2)}
                                 </div>
-                                <div className="text-blue-400">ESTADO: {autoLoop ? 'BUCLE ACTIVO' : 'ESPERA MANUAL'}</div>
+                                <div className="text-blue-400">ESTADO: {config.autoLoop ? 'BUCLE ACTIVO' : 'ESPERA MANUAL'}</div>
                             </div>
 
                             <div className="h-full min-h-[300px] flex items-center justify-center relative">
                                 {/* Efectos visuales reactivos a la configuración y estado */}
                                 <div className={`absolute w-32 h-32 rounded-full border-2 animate-[spin_10s_linear_infinite] transition-all duration-1000 ${
                                     processing ? 'border-purple-500 shadow-[0_0_60px_rgba(168,85,247,0.6)]' : 
-                                    autoLoop ? 'border-emerald-500/50 shadow-[0_0_30px_rgba(16,185,129,0.2)]' : 'border-slate-700'
+                                    config.autoLoop ? 'border-emerald-500/50 shadow-[0_0_30px_rgba(16,185,129,0.2)]' : 'border-slate-700'
                                 }`}></div>
                                 
                                 <div className={`absolute w-48 h-48 rounded-full border border-dashed animate-[spin_15s_linear_infinite_reverse] transition-colors ${
@@ -311,25 +368,25 @@ export const NeuralNetworkView = () => {
                                 <div className="text-center z-10 p-6 bg-slate-950/90 backdrop-blur-md rounded-full border border-slate-700 shadow-2xl relative">
                                     {processing && <div className="absolute inset-0 rounded-full border-2 border-purple-500 animate-ping opacity-20"></div>}
                                     <div className="text-4xl font-bold text-white tracking-tighter">EVA</div>
-                                    <div className={`text-[10px] font-mono mt-1 ${processing ? 'text-purple-400 animate-pulse' : autoLoop ? 'text-emerald-400' : 'text-slate-500'}`}>
-                                        {processing ? 'CALCULANDO...' : autoLoop ? 'MONITOREO VIVO' : 'STANDBY'}
+                                    <div className={`text-[10px] font-mono mt-1 ${processing ? 'text-purple-400 animate-pulse' : config.autoLoop ? 'text-emerald-400' : 'text-slate-500'}`}>
+                                        {processing ? 'CALCULANDO...' : config.autoLoop ? 'MONITOREO VIVO' : 'STANDBY'}
                                     </div>
                                 </div>
                             </div>
                             
                             <div className="absolute bottom-4 right-4 z-20 flex gap-2">
                                 <button 
-                                    onClick={() => setAutoLoop(!autoLoop)}
+                                    onClick={() => setConfig(prev => ({ ...prev, autoLoop: !prev.autoLoop }))}
                                     className={`px-5 py-2.5 rounded-lg text-xs font-bold flex items-center gap-2 transition-all hover:scale-105 active:scale-95 border ${
-                                        autoLoop 
+                                        config.autoLoop 
                                         ? 'bg-red-500/10 border-red-500/50 text-red-400 hover:bg-red-500/20' 
                                         : 'bg-emerald-600 hover:bg-emerald-500 text-white border-transparent shadow-[0_0_20px_rgba(16,185,129,0.3)]'
                                     }`}
                                 >
-                                    {autoLoop ? <><Icons.Stop /> DETENER BUCLE</> : <><Icons.Play /> ACTIVAR BUCLE AUTOMÁTICO</>}
+                                    {config.autoLoop ? <><Icons.Stop /> DETENER BUCLE</> : <><Icons.Play /> ACTIVAR BUCLE AUTOMÁTICO</>}
                                 </button>
 
-                                {!autoLoop && (
+                                {!config.autoLoop && (
                                     <button 
                                         onClick={analyzeMarketReal}
                                         disabled={processing}
@@ -493,4 +550,4 @@ export const NeuralNetworkView = () => {
             </div>
         </div>
     );
-};
+}

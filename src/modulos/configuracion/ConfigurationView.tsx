@@ -3,6 +3,21 @@ import React, { useState } from 'react';
 import { BinanceConfig, StrategyType } from '../../types';
 import { Icons } from '../../components/Icons';
 
+// Configuración de fábrica para restauración
+const FACTORY_DEFAULTS: BinanceConfig = {
+    email: '',
+    apiKey: '',
+    apiSecret: '',
+    leverage: 20,
+    useTestnet: false,
+    maxPositionSize: 10,
+    stopLoss: 2.0,
+    takeProfit: 5.0,
+    strategy: 'SCALPING_MACD',
+    operationDuration: 60,
+    autonomousMode: false
+};
+
 export const ConfigurationView = ({ 
     config, 
     setConfig, 
@@ -17,6 +32,7 @@ export const ConfigurationView = ({
     const [saved, setSaved] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [validationError, setValidationError] = useState<string | null>(null);
+    const [showResetModal, setShowResetModal] = useState(false);
 
     const handleSaveClick = async () => {
         if (!config.email || config.email.trim() === '') {
@@ -28,6 +44,13 @@ export const ConfigurationView = ({
         await onSave();
         setIsSaving(false);
         setSaved(true);
+        setTimeout(() => setSaved(false), 2000);
+    };
+
+    const handleFactoryReset = () => {
+        setConfig(FACTORY_DEFAULTS);
+        setShowResetModal(false);
+        setSaved(true); // Usamos el estado saved para mostrar feedback visual verde momentáneo
         setTimeout(() => setSaved(false), 2000);
     };
 
@@ -91,8 +114,46 @@ export const ConfigurationView = ({
     };
 
     return (
-        <div className="flex-1 h-full p-6 md:p-8 overflow-y-auto bg-slate-950 custom-scrollbar">
-            <div className="max-w-4xl mx-auto space-y-8">
+        <div className="flex-1 h-full p-6 md:p-8 overflow-y-auto bg-slate-950 custom-scrollbar relative">
+            
+            {/* --- MODAL FLOTANTE DE ALERTA (RESET) --- */}
+            {showResetModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 p-4">
+                    <div className="bg-slate-900 border-2 border-rose-600 rounded-xl max-w-md w-full shadow-[0_0_50px_rgba(225,29,72,0.3)] relative overflow-hidden transform scale-100 animate-in zoom-in-95 duration-200">
+                        {/* Scanline decorativa */}
+                        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/diagmonds-light.png')] opacity-5 pointer-events-none"></div>
+                        <div className="h-1 w-full bg-rose-600"></div>
+                        
+                        <div className="p-8 text-center relative z-10">
+                            <div className="w-16 h-16 bg-rose-500/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-rose-500/30">
+                                <span className="text-rose-500 transform scale-150"><Icons.Alert /></span>
+                            </div>
+                            
+                            <h3 className="text-2xl font-bold text-white mb-2 tracking-tight">¿RESTAURAR FÁBRICA?</h3>
+                            <p className="text-slate-400 text-sm mb-6 leading-relaxed">
+                                Esta acción eliminará <strong className="text-rose-400">todas sus claves API, configuraciones de estrategia y preferencias personales</strong>. El sistema EVA volverá a su estado inicial.
+                            </p>
+                            
+                            <div className="flex gap-3 justify-center">
+                                <button 
+                                    onClick={() => setShowResetModal(false)}
+                                    className="px-6 py-3 rounded-lg bg-slate-800 text-white font-bold hover:bg-slate-700 transition-colors border border-slate-700 text-xs tracking-wider"
+                                >
+                                    CANCELAR OPERACIÓN
+                                </button>
+                                <button 
+                                    onClick={handleFactoryReset}
+                                    className="px-6 py-3 rounded-lg bg-rose-600 text-white font-bold hover:bg-rose-500 transition-all shadow-lg shadow-rose-900/40 text-xs tracking-wider flex items-center gap-2"
+                                >
+                                    <Icons.Shield /> CONFIRMAR BORRADO
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <div className="max-w-4xl mx-auto space-y-8 pb-10">
                 {/* Header */}
                 <div className="border-b border-slate-800 pb-6 flex justify-between items-end">
                     <div>
@@ -384,11 +445,19 @@ export const ConfigurationView = ({
                     </div>
                 )}
 
-                <div className="pt-8 flex justify-end">
+                <div className="pt-8 flex flex-col md:flex-row justify-between items-center gap-4 border-t border-slate-800 mt-8">
+                     <button 
+                        onClick={() => setShowResetModal(true)}
+                        className="text-rose-500 hover:text-rose-400 text-xs font-bold tracking-widest border border-rose-500/30 hover:border-rose-500/60 hover:bg-rose-500/10 px-6 py-3 rounded-lg transition-all flex items-center gap-2 group"
+                    >
+                        <Icons.Alert /> 
+                        <span className="group-hover:underline decoration-rose-500 underline-offset-4">REGRESAR A FÁBRICA</span>
+                    </button>
+
                     <button 
                         onClick={handleSaveClick}
                         disabled={isSaving}
-                        className={`px-8 py-3 rounded-lg font-bold flex items-center gap-3 transition-all ${saved ? 'bg-emerald-500 text-white' : 'bg-white text-black hover:bg-slate-200'} ${isSaving ? 'opacity-50 cursor-wait' : ''}`}
+                        className={`px-8 py-3 rounded-lg font-bold flex items-center gap-3 transition-all ${saved ? 'bg-emerald-500 text-white shadow-[0_0_20px_rgba(16,185,129,0.4)]' : 'bg-white text-black hover:bg-slate-200'} ${isSaving ? 'opacity-50 cursor-wait' : ''}`}
                     >
                         {isSaving ? (
                             <>GUARDANDO EN DB...</>

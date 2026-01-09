@@ -9,27 +9,34 @@ interface AssetManagerProps {
     accountBalance: { asset: string, free: string, locked: string }[];
     savedAssetConfigs: AssetConfig[];
     onSaveConfig: (configs: AssetConfig[]) => void;
+    autonomousMode: boolean; 
+    onToggleAutoMode: (enabled: boolean) => void; 
+    onNavigate: () => void; // NUEVA PROP DE NAVEGACIÓN
 }
 
-export const AssetManagerView = ({ accountBalance, savedAssetConfigs, onSaveConfig }: AssetManagerProps) => {
+export const AssetManagerView = ({ 
+    accountBalance, 
+    savedAssetConfigs, 
+    onSaveConfig,
+    autonomousMode,
+    onToggleAutoMode,
+    onNavigate
+}: AssetManagerProps) => {
+    
     const [assets, setAssets] = useState<AssetConfig[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [saving, setSaving] = useState(false);
-    const [autoMode, setAutoMode] = useState(false); // ESTADO DEL MODO AUTOMÁTICO
     
     // Inicializar mezclando la lista maestra con los saldos reales y la CONFIGURACIÓN GUARDADA
     useEffect(() => {
         const mergedAssets: AssetConfig[] = MASTER_ASSET_LIST.map(symbol => {
-            // 1. Buscamos si ya existe una configuración guardada para este activo
             const savedConfig = savedAssetConfigs.find(config => config.symbol === symbol);
             
-            // 2. Obtenemos datos de balance en vivo
             const balanceData = accountBalance.find(b => b.asset === symbol);
             const totalBalance = balanceData 
                 ? parseFloat(balanceData.free) + parseFloat(balanceData.locked) 
                 : 0;
 
-            // 3. Si hay config guardada, la usamos y solo actualizamos el balance
             if (savedConfig) {
                 return {
                     ...savedConfig,
@@ -37,23 +44,20 @@ export const AssetManagerView = ({ accountBalance, savedAssetConfigs, onSaveConf
                 };
             }
 
-            // 4. Si no, inicializamos con valores por defecto
             return {
                 symbol,
-                isActive: totalBalance > 0, // Auto-activar si hay fondos
+                isActive: totalBalance > 0,
                 allocationPercent: totalBalance > 0 ? 50 : 0,
                 strategyOverride: 'GLOBAL',
-                riskFactor: 5, // Riesgo medio por defecto
+                riskFactor: 5,
                 balance: totalBalance
             };
         });
 
-        // Añadir activos que el usuario tenga pero no estén en la lista maestra (Excepto USDT/Stablecoins)
+        // Añadir activos extra detectados en balance
         accountBalance.forEach(b => {
             if (!MASTER_ASSET_LIST.includes(b.asset) && b.asset !== 'USDT' && b.asset !== 'USDC' && b.asset !== 'FDUSD') {
                  const totalBalance = parseFloat(b.free) + parseFloat(b.locked);
-                 
-                 // Verificar si este activo "raro" ya estaba configurado
                  const savedConfig = savedAssetConfigs.find(config => config.symbol === b.asset);
                  
                  if (savedConfig) {
@@ -82,15 +86,20 @@ export const AssetManagerView = ({ accountBalance, savedAssetConfigs, onSaveConf
         setSaving(true);
         // Simulamos un guardado "Complejo" al núcleo
         setTimeout(() => {
-            if (autoMode) {
+            if (autonomousMode) {
                 console.log("GUARDANDO CONFIGURACIÓN: MODO AUTO SOBERANO ACTIVADO");
-                // En modo auto, enviamos todos los activos con balance como activos
                 const fundedAssets = assets.filter(a => a.balance > 0).map(a => ({...a, isActive: true}));
                 onSaveConfig(fundedAssets); 
             } else {
                 onSaveConfig(assets);
             }
+            
             setSaving(false);
+            
+            // --- PROTOCOLO DE ALERTA Y REDIRECCIÓN ---
+            alert("✓ MATRIZ DE ACTIVOS SINCRONIZADA CON ÉXITO.\n\nEL PROTOCOLO EVA REINICIARÁ EL ANÁLISIS EN EL PANEL PRINCIPAL.");
+            onNavigate();
+
         }, 1000);
     };
 
@@ -118,7 +127,7 @@ export const AssetManagerView = ({ accountBalance, savedAssetConfigs, onSaveConf
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value.toUpperCase())}
                                 className="bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-xs font-mono text-white focus:border-yellow-500 outline-none w-48"
-                                disabled={autoMode}
+                                disabled={autonomousMode}
                             />
                         </div>
                         <button 
@@ -132,47 +141,47 @@ export const AssetManagerView = ({ accountBalance, savedAssetConfigs, onSaveConf
                 </div>
 
                 {/* --- NODO MAESTRO: ASIGNACIÓN AUTOMÁTICA --- */}
-                <div className={`p-6 rounded-xl border transition-all relative overflow-hidden group ${autoMode ? 'bg-indigo-900/20 border-indigo-500/50 shadow-[0_0_40px_rgba(99,102,241,0.15)]' : 'bg-slate-900/50 border-slate-800 hover:border-slate-700'}`}>
+                <div className={`p-6 rounded-xl border transition-all relative overflow-hidden group ${autonomousMode ? 'bg-indigo-900/20 border-indigo-500/50 shadow-[0_0_40px_rgba(99,102,241,0.15)]' : 'bg-slate-900/50 border-slate-800 hover:border-slate-700'}`}>
                     <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
                         <Icons.Brain />
                     </div>
                     
                     <div className="flex flex-col md:flex-row justify-between items-center gap-6 relative z-10">
                          <div className="flex-1">
-                            <h2 className={`text-xl font-bold flex items-center gap-3 transition-colors ${autoMode ? 'text-indigo-400' : 'text-slate-300'}`}>
+                            <h2 className={`text-xl font-bold flex items-center gap-3 transition-colors ${autonomousMode ? 'text-indigo-400' : 'text-slate-300'}`}>
                                 <Icons.Zap /> NODO DE EJECUCIÓN SOBERANA (AUTOMÁTICO)
                             </h2>
                             <p className="text-slate-500 font-mono text-xs mt-2 max-w-2xl leading-relaxed">
-                                AL ACTIVAR ESTE PROTOCOLO, <strong className={autoMode ? "text-indigo-300" : ""}>EVA ASUME EL CONTROL TOTAL</strong>. ESCANEARÁ Y OPERARÁ AUTÓNOMAMENTE CUALQUIER ACTIVO CON SALDO POSITIVO EN LA CUENTA, IGNORANDO LA MATRIZ MANUAL INFERIOR Y APLICANDO ESTRATEGIAS DE OPORTUNIDAD GLOBAL.
+                                AL ACTIVAR ESTE PROTOCOLO, <strong className={autonomousMode ? "text-indigo-300" : ""}>EVA ASUME EL CONTROL TOTAL</strong>. ESCANEARÁ Y OPERARÁ AUTÓNOMAMENTE CUALQUIER ACTIVO CON SALDO POSITIVO EN LA CUENTA, IGNORANDO LA MATRIZ MANUAL INFERIOR Y APLICANDO ESTRATEGIAS DE OPORTUNIDAD GLOBAL.
                             </p>
                          </div>
                          
                          <div className="flex items-center gap-5 bg-slate-950/50 p-4 rounded-xl border border-slate-800/50">
                             <div className="text-right">
-                                <div className={`font-mono text-xs font-bold ${autoMode ? 'text-indigo-400 animate-pulse' : 'text-slate-500'}`}>
-                                    {autoMode ? 'SISTEMA AUTÓNOMO: ONLINE' : 'CONTROL MANUAL: ACTIVO'}
+                                <div className={`font-mono text-xs font-bold ${autonomousMode ? 'text-indigo-400 animate-pulse' : 'text-slate-500'}`}>
+                                    {autonomousMode ? 'SISTEMA AUTÓNOMO: ONLINE' : 'CONTROL MANUAL: ACTIVO'}
                                 </div>
                                 <div className="text-[10px] text-slate-600 font-mono mt-1">
-                                    {autoMode ? 'ESCANEO DE CARTERA: CONTINUO' : 'SELECCIÓN POR USUARIO'}
+                                    {autonomousMode ? 'ESCANEO DE CARTERA: CONTINUO' : 'SELECCIÓN POR USUARIO'}
                                 </div>
                             </div>
                             <button 
-                                onClick={() => setAutoMode(!autoMode)}
-                                className={`w-16 h-8 rounded-full p-1 transition-colors duration-300 ease-in-out focus:outline-none ${autoMode ? 'bg-indigo-500 shadow-indigo-900/50' : 'bg-slate-700 shadow-slate-900/50'}`}
+                                onClick={() => onToggleAutoMode(!autonomousMode)}
+                                className={`w-16 h-8 rounded-full p-1 transition-colors duration-300 ease-in-out focus:outline-none ${autonomousMode ? 'bg-indigo-500 shadow-indigo-900/50' : 'bg-slate-700 shadow-slate-900/50'}`}
                             >
-                                <div className={`bg-white w-6 h-6 rounded-full shadow-md transform transition-transform duration-300 ease-in-out ${autoMode ? 'translate-x-8' : 'translate-x-0'}`}></div>
+                                <div className={`bg-white w-6 h-6 rounded-full shadow-md transform transition-transform duration-300 ease-in-out ${autonomousMode ? 'translate-x-8' : 'translate-x-0'}`}></div>
                             </button>
                          </div>
                     </div>
                     
                     {/* Background FX for Auto Mode */}
-                    {autoMode && (
+                    {autonomousMode && (
                         <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/circuit-board.png')] opacity-5 animate-pulse pointer-events-none"></div>
                     )}
                 </div>
 
                 {/* Grid de Tarjetas Complejas (Deshabilitado visualmente si AutoMode es ON) */}
-                <div className={`grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 transition-all duration-500 ${autoMode ? 'opacity-40 grayscale pointer-events-none blur-[1px]' : ''}`}>
+                <div className={`grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 transition-all duration-500 ${autonomousMode ? 'opacity-40 grayscale pointer-events-none blur-[1px]' : ''}`}>
                     {filteredAssets.map((asset) => (
                         <div 
                             key={asset.symbol} 
