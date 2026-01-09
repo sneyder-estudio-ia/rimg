@@ -1,9 +1,8 @@
-
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../../supabaseClient';
 import { NeuralMemory } from '../../types';
 import { Icons } from '../../components/Icons';
-import { getCandles } from '../../services/binanceService';
+import { getCandles, subscribeToTicker } from '../../services/binanceService';
 import { calculateRSI, calculateVolatility, detectWhaleActivity } from '../../utils/neuralMath';
 
 // --- INTERFACES LOCALES ---
@@ -21,16 +20,23 @@ interface NeuralConfig {
 }
 
 export const NeuralNetworkView = () => {
+    // --- ESTADO DE DATOS VIVOS ---
     const [memories, setMemories] = useState<NeuralMemory[]>([]);
+    const [livePrice, setLivePrice] = useState<number>(0);
+    const [liveRsi, setLiveRsi] = useState<number>(50);
+    
+    // --- ESTADO DEL SISTEMA ---
     const [loading, setLoading] = useState(true);
     const [processing, setProcessing] = useState(false);
+    const [autoLoop, setAutoLoop] = useState(false); // BUCLE CORTICAL
     const [globalAccuracy, setGlobalAccuracy] = useState(0);
-    const [marketSnapshot, setMarketSnapshot] = useState<{rsi: number, vol: number, price: number} | null>(null);
+    
+    const processingRef = useRef(false); // Ref para evitar race conditions en el loop
     
     // --- ESTADO DE LAS 10 HABILIDADES ---
     const [config, setConfig] = useState<NeuralConfig>({
-        learningRate: 0.65, // Peso del RSI (0.0 - 1.0)
-        riskTolerance: 50,  // Umbral neutro
+        learningRate: 0.65, 
+        riskTolerance: 50,  
         sentimentAnalysis: true,
         whaleTracking: true,
         patternRecognition: true,
@@ -41,25 +47,94 @@ export const NeuralNetworkView = () => {
         quantumMode: false
     });
 
+    // --- REF DE CONFIGURACIÓN VIVA (CRÍTICO PARA EL BUCLE) ---
+    const configRef = useRef(config);
+
+    useEffect(() => {
+        configRef.current = config;
+    }, [config]);
+
     const toggleConfig = (key: keyof NeuralConfig) => {
         setConfig(prev => ({ ...prev, [key]: !prev[key] }));
+    };
+
+    // --- 1. CONEXIÓN SENSORIAL (WEBSOCKET & SUPABASE) ---
+    useEffect(() => {
+        fetchMemories();
+        
+        const channel = supabase
+            .channel('public:eva_collective_memory')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'eva_collective_memory' }, 
+                (payload) => {
+                    const newMem = payload.new as NeuralMemory;
+                    setMemories(prev => [newMem, ...prev].slice(0, 50));
+                }
+            )
+            .subscribe();
+
+        const ws = subscribeToTicker('BTCUSDT', (data) => {
+            setLivePrice(data.price);
+        });
+
+        return () => { 
+            supabase.removeChannel(channel);
+            ws.close();
+        };
+    }, []);
+
+    // --- 2. LOOP CORTICAL (AUTO-ANÁLISIS) ---
+    useEffect(() => {
+        let interval: any;
+        if (autoLoop) {
+            analyzeMarketReal(); 
+            interval = setInterval(() => {
+                if (!processingRef.current) {
+                    analyzeMarketReal();
+                }
+            }, 10000);
+        }
+        return () => clearInterval(interval);
+    }, [autoLoop]);
+
+    // --- 3. CÁLCULO DE PRECISIÓN REAL ---
+    useEffect(() => {
+        if (memories.length > 0 && livePrice > 0) {
+            calculateRealTimeAccuracy();
+        }
+    }, [memories, livePrice]);
+
+    const calculateRealTimeAccuracy = () => {
+        let hits = 0;
+        let total = 0;
+        
+        memories.slice(0, 20).forEach(mem => {
+            const entryPrice = mem.input_pattern.price;
+            const decision = mem.decision;
+            
+            if (decision === 'HOLD') return;
+
+            const priceDiff = livePrice - entryPrice;
+            if ((decision === 'LONG' && priceDiff > 0) || (decision === 'SHORT' && priceDiff < 0)) {
+                hits++;
+            }
+            total++;
+        });
+
+        if (total > 0) {
+            setGlobalAccuracy((hits / total) * 100);
+        }
     };
 
     const fetchMemories = async () => {
         setLoading(true);
         try {
-            const { data, error } = await supabase
+            const { data } = await supabase
                 .from('eva_collective_memory')
                 .select('*')
                 .order('created_at', { ascending: false })
                 .limit(50);
 
-            if (data) {
-                setMemories(data);
-                // "Accuracy" en este contexto real será el porcentaje de confianza promedio de las últimas ejecuciones
-                const avgConfidence = data.reduce((acc, curr) => acc + curr.confidence_level, 0) / (data.length || 1);
-                setGlobalAccuracy(avgConfidence * 100);
-            }
+            if (data) setMemories(data);
         } catch (e) {
             console.error("Error conectando con el núcleo neuronal:", e);
         } finally {
@@ -67,115 +142,114 @@ export const NeuralNetworkView = () => {
         }
     };
 
-    // --- LÓGICA DE ANÁLISIS REAL (NO SIMULADA) ---
+    // --- 4. LÓGICA DE ANÁLISIS REAL (CON REF VIVA) ---
     const analyzeMarketReal = async () => {
+        if (processingRef.current) return;
+        processingRef.current = true;
         setProcessing(true);
+
         try {
-            // 1. OBTENCIÓN DE DATOS REALES (Sensory Input)
+            const currentConfig = configRef.current;
+
             const candles = await getCandles('BTCUSDT', '15m', 50);
-            if (candles.length < 15) throw new Error("Datos de mercado insuficientes");
+            if (candles.length < 20) throw new Error("Datos insuficientes de Binance");
 
             const closePrices = candles.map(c => c.close);
             const volumes = candles.map(c => c.volume);
             const currentPrice = closePrices[closePrices.length - 1];
 
-            // 2. PROCESAMIENTO MATEMÁTICO (Neural Processing)
             const rsi = calculateRSI(closePrices, 14);
             const volatility = calculateVolatility(closePrices.slice(-10));
             const isWhale = detectWhaleActivity(volumes);
 
-            setMarketSnapshot({ rsi, vol: volatility, price: currentPrice });
+            setLiveRsi(rsi);
 
-            // 3. PONDERACIÓN DE DECISIÓN (Weighted Decision)
-            // Score va de -100 (Sell Fuerte) a 100 (Buy Fuerte)
             let score = 0;
 
-            // Capa 1: RSI (Sentimiento)
-            if (config.sentimentAnalysis) {
-                if (rsi < 30) score += 40 * config.learningRate; // Oversold -> Buy
-                if (rsi > 70) score -= 40 * config.learningRate; // Overbought -> Sell
-                // RSI Neutral tiende a 0
+            if (currentConfig.sentimentAnalysis) {
+                if (rsi < 30) score += (40 * currentConfig.learningRate); 
+                else if (rsi > 70) score -= (40 * currentConfig.learningRate);
+                else score += (50 - rsi) * 0.5 * currentConfig.learningRate;
             }
 
-            // Capa 2: Ballenas (Volumen)
-            if (config.whaleTracking && isWhale) {
-                // Si hay ballena, seguimos la tendencia de la última vela
+            if (currentConfig.whaleTracking && isWhale) {
                 const lastCandle = candles[candles.length - 1];
                 const isGreen = lastCandle.close > lastCandle.open;
                 score += isGreen ? 25 : -25;
             }
 
-            // Capa 3: Escudo de Volatilidad (Inhibición)
-            if (config.volatilityShield && volatility > (currentPrice * 0.01)) {
-                score = score * 0.5; // Reducimos la confianza si el mercado está muy loco
+            if (currentConfig.volatilityShield && volatility > (currentPrice * 0.005)) {
+                score = score * 0.6;
             }
 
-            // Capa 4: Modo Cuántico (Inversión)
-            if (config.quantumMode) {
-                score = -score;
-            }
+            if (currentConfig.quantumMode) score = -score;
 
-            // Ajuste por Tolerancia al Riesgo
-            // Si riskTolerance es alto (100), operaciones pequeñas se ejecutan.
-            // Si es bajo (0), necesitamos un score muy alto.
-            const threshold = 100 - config.riskTolerance; 
-
+            const threshold = 100 - currentConfig.riskTolerance; 
             let decision = 'HOLD';
-            if (score > threshold / 2) decision = 'LONG';
-            if (score < -(threshold / 2)) decision = 'SHORT';
+            
+            if (score > (threshold / 3)) decision = 'LONG';
+            if (score < -(threshold / 3)) decision = 'SHORT';
 
-            // Confianza basada en la magnitud del score absoluto
-            const confidence = Math.min(Math.abs(score) / 100, 0.99);
+            const confidence = Math.min(Math.abs(score) / 50, 0.99);
 
-            // 4. MEMORIA A LARGO PLAZO (Supabase)
-            const newMemory = {
-                input_pattern: { 
-                    rsi: rsi.toFixed(2), 
-                    volatility: volatility.toFixed(2),
-                    whale_detected: isWhale,
-                    price: currentPrice
-                },
-                decision: decision,
-                outcome_score: score, // Guardamos el "Neural Score" calculado
-                strategy_used: config.quantumMode ? 'QUANTUM_HEURISTIC' : 'STANDARD_NEURAL_V2',
-                confidence_level: confidence
-            };
+            if (decision !== 'HOLD') {
+                const newMemory = {
+                    input_pattern: { 
+                        rsi: rsi.toFixed(2), 
+                        volatility: volatility.toFixed(2),
+                        whale_detected: isWhale,
+                        price: currentPrice
+                    },
+                    decision: decision,
+                    outcome_score: score, 
+                    strategy_used: currentConfig.quantumMode ? 'QUANTUM_HEURISTIC' : 'STANDARD_NEURAL_V2',
+                    confidence_level: confidence
+                };
 
-            await supabase.from('eva_collective_memory').insert([newMemory]);
-            await fetchMemories();
+                await supabase.from('eva_collective_memory').insert([newMemory]);
+            }
 
         } catch (e) {
             console.error("Fallo en el análisis neuronal:", e);
         } finally {
             setProcessing(false);
+            processingRef.current = false;
         }
     };
 
-    useEffect(() => {
-        fetchMemories();
-        const channel = supabase
-            .channel('public:eva_collective_memory')
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'eva_collective_memory' }, 
-                () => fetchMemories()
-            )
-            .subscribe();
+    // --- COMPONENTE INTERRUPTOR REPARADO ---
+    // Usamos switch case explícito para que Tailwind no purgue las clases
+    const AbilityToggle = ({ label, active, onClick, color = "emerald" }: { label: string, active: boolean, onClick: () => void, color?: string }) => {
+        
+        const getStyles = (c: string) => {
+            switch(c) {
+                case 'blue': return { bg: 'bg-blue-500/10', border: 'border-blue-500/50', dot: 'bg-blue-500', shadow: 'shadow-[0_0_10px_rgba(59,130,246,0.1)]' };
+                case 'indigo': return { bg: 'bg-indigo-500/10', border: 'border-indigo-500/50', dot: 'bg-indigo-500', shadow: 'shadow-[0_0_10px_rgba(99,102,241,0.1)]' };
+                case 'purple': return { bg: 'bg-purple-500/10', border: 'border-purple-500/50', dot: 'bg-purple-500', shadow: 'shadow-[0_0_10px_rgba(168,85,247,0.1)]' };
+                case 'yellow': return { bg: 'bg-yellow-500/10', border: 'border-yellow-500/50', dot: 'bg-yellow-500', shadow: 'shadow-[0_0_10px_rgba(234,179,8,0.1)]' };
+                case 'emerald': return { bg: 'bg-emerald-500/10', border: 'border-emerald-500/50', dot: 'bg-emerald-500', shadow: 'shadow-[0_0_10px_rgba(16,185,129,0.1)]' };
+                case 'orange': return { bg: 'bg-orange-500/10', border: 'border-orange-500/50', dot: 'bg-orange-500', shadow: 'shadow-[0_0_10px_rgba(249,115,22,0.1)]' };
+                case 'slate': return { bg: 'bg-slate-500/10', border: 'border-slate-500/50', dot: 'bg-slate-500', shadow: 'shadow-[0_0_10px_rgba(100,116,139,0.1)]' };
+                default: return { bg: 'bg-emerald-500/10', border: 'border-emerald-500/50', dot: 'bg-emerald-500', shadow: 'shadow-[0_0_10px_rgba(16,185,129,0.1)]' };
+            }
+        };
 
-        return () => { supabase.removeChannel(channel); };
-    }, []);
+        const theme = getStyles(color);
 
-    const AbilityToggle = ({ label, active, onClick, color = "emerald" }: { label: string, active: boolean, onClick: () => void, color?: string }) => (
-        <div 
-            onClick={onClick}
-            className={`cursor-pointer p-3 rounded-lg border flex items-center justify-between transition-all hover:scale-[1.02] ${active 
-                ? `bg-${color}-500/10 border-${color}-500/50 shadow-[0_0_10px_rgba(16,185,129,0.1)]` 
-                : 'bg-slate-900 border-slate-700 opacity-60 hover:opacity-100'}`}
-        >
-            <span className={`text-xs font-bold ${active ? 'text-white' : 'text-slate-400'}`}>{label}</span>
-            <div className={`w-8 h-4 rounded-full relative transition-colors ${active ? `bg-${color}-500` : 'bg-slate-600'}`}>
-                <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all shadow-sm ${active ? 'left-4.5' : 'left-0.5'}`}></div>
+        return (
+            <div 
+                onClick={onClick}
+                className={`cursor-pointer p-3 rounded-lg border flex items-center justify-between transition-all hover:scale-[1.02] select-none ${active 
+                    ? `${theme.bg} ${theme.border} ${theme.shadow}` 
+                    : 'bg-slate-900 border-slate-700 opacity-60 hover:opacity-100'}`}
+            >
+                <span className={`text-xs font-bold ${active ? 'text-white' : 'text-slate-400'}`}>{label}</span>
+                <div className={`w-8 h-4 rounded-full relative transition-colors ${active ? theme.dot : 'bg-slate-600'}`}>
+                    <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all shadow-sm ${active ? 'left-4.5' : 'left-0.5'}`}></div>
+                </div>
             </div>
-        </div>
-    );
+        );
+    };
 
     return (
         <div className="flex-1 h-full bg-slate-950 p-4 md:p-8 overflow-y-auto font-sans relative custom-scrollbar">
@@ -189,16 +263,16 @@ export const NeuralNetworkView = () => {
                         </h1>
                         <p className="text-slate-500 font-mono text-xs mt-1">SISTEMA CORTICAL REAL // BTC-USDT FEED</p>
                     </div>
-                    <div className="flex gap-4 text-right">
+                    <div className="flex gap-6 text-right items-center">
                          <div>
-                            <div className="text-[10px] text-slate-500 uppercase tracking-widest">Nodos Activos</div>
-                            <div className="text-xl font-mono font-bold text-cyan-400">
-                                {Object.values(config).filter(v => v === true || (typeof v === 'number' && v > 0)).length}/10
+                            <div className="text-[10px] text-slate-500 uppercase tracking-widest">Precio Live</div>
+                            <div className="text-xl font-mono font-bold text-white">
+                                ${livePrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                             </div>
                         </div>
                         <div>
-                            <div className="text-[10px] text-slate-500 uppercase tracking-widest">Confianza Media</div>
-                            <div className={`text-xl font-mono font-bold ${globalAccuracy > 50 ? 'text-emerald-400' : 'text-yellow-400'}`}>
+                            <div className="text-[10px] text-slate-500 uppercase tracking-widest">Precisión Real</div>
+                            <div className={`text-xl font-mono font-bold ${globalAccuracy > 55 ? 'text-emerald-400' : globalAccuracy < 45 ? 'text-rose-400' : 'text-yellow-400'}`}>
                                 {globalAccuracy.toFixed(1)}%
                             </div>
                         </div>
@@ -214,38 +288,56 @@ export const NeuralNetworkView = () => {
                         <div className="bg-slate-900/50 rounded-xl border border-slate-800 p-1 relative overflow-hidden group min-h-[300px]">
                             <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5"></div>
                             
-                            {marketSnapshot && (
-                                <div className="absolute top-4 left-4 z-20 space-y-1 font-mono text-xs">
-                                    <div className="text-slate-400">INPUT REAL (BTC)</div>
-                                    <div className={`${marketSnapshot.rsi > 70 ? 'text-rose-400' : marketSnapshot.rsi < 30 ? 'text-emerald-400' : 'text-yellow-400'}`}>
-                                        RSI: {marketSnapshot.rsi.toFixed(2)}
-                                    </div>
-                                    <div className="text-blue-400">VOL: {marketSnapshot.vol.toFixed(2)}</div>
-                                    <div className="text-white">PRC: {marketSnapshot.price.toFixed(2)}</div>
+                            {/* DATA OVERLAY */}
+                            <div className="absolute top-4 left-4 z-20 space-y-1 font-mono text-xs bg-black/50 p-2 rounded border border-slate-800 backdrop-blur-sm">
+                                <div className="text-slate-400 font-bold mb-1 border-b border-slate-700 pb-1">INPUT SENSORIAL (Binance)</div>
+                                <div className={`${liveRsi > 70 ? 'text-rose-400' : liveRsi < 30 ? 'text-emerald-400' : 'text-yellow-400'}`}>
+                                    RSI (14): {liveRsi.toFixed(2)}
                                 </div>
-                            )}
+                                <div className="text-blue-400">ESTADO: {autoLoop ? 'BUCLE ACTIVO' : 'ESPERA MANUAL'}</div>
+                            </div>
 
                             <div className="h-full min-h-[300px] flex items-center justify-center relative">
-                                {/* Efectos visuales reactivos a la configuración */}
-                                <div className={`absolute w-32 h-32 rounded-full border border-purple-500/30 animate-[spin_10s_linear_infinite] ${processing ? 'border-purple-500 shadow-[0_0_50px_rgba(168,85,247,0.8)] duration-75' : ''}`}></div>
-                                <div className={`absolute w-48 h-48 rounded-full border border-cyan-500/20 animate-[spin_15s_linear_infinite_reverse] ${processing ? 'border-cyan-500' : ''}`}></div>
+                                {/* Efectos visuales reactivos a la configuración y estado */}
+                                <div className={`absolute w-32 h-32 rounded-full border-2 animate-[spin_10s_linear_infinite] transition-all duration-1000 ${
+                                    processing ? 'border-purple-500 shadow-[0_0_60px_rgba(168,85,247,0.6)]' : 
+                                    autoLoop ? 'border-emerald-500/50 shadow-[0_0_30px_rgba(16,185,129,0.2)]' : 'border-slate-700'
+                                }`}></div>
                                 
-                                <div className="text-center z-10 p-6 bg-slate-950/80 backdrop-blur-md rounded-full border border-slate-700 shadow-2xl">
+                                <div className={`absolute w-48 h-48 rounded-full border border-dashed animate-[spin_15s_linear_infinite_reverse] transition-colors ${
+                                    liveRsi < 30 ? 'border-emerald-500/40' : liveRsi > 70 ? 'border-rose-500/40' : 'border-cyan-500/20'
+                                }`}></div>
+                                
+                                <div className="text-center z-10 p-6 bg-slate-950/90 backdrop-blur-md rounded-full border border-slate-700 shadow-2xl relative">
+                                    {processing && <div className="absolute inset-0 rounded-full border-2 border-purple-500 animate-ping opacity-20"></div>}
                                     <div className="text-4xl font-bold text-white tracking-tighter">EVA</div>
-                                    <div className="text-[10px] text-purple-400 font-mono mt-1">
-                                        {processing ? 'CALCULANDO...' : 'SISTEMA LISTO'}
+                                    <div className={`text-[10px] font-mono mt-1 ${processing ? 'text-purple-400 animate-pulse' : autoLoop ? 'text-emerald-400' : 'text-slate-500'}`}>
+                                        {processing ? 'CALCULANDO...' : autoLoop ? 'MONITOREO VIVO' : 'STANDBY'}
                                     </div>
                                 </div>
                             </div>
                             
-                            <div className="absolute bottom-4 right-4 z-20">
+                            <div className="absolute bottom-4 right-4 z-20 flex gap-2">
                                 <button 
-                                    onClick={analyzeMarketReal}
-                                    disabled={processing}
-                                    className={`px-5 py-2.5 rounded-lg text-xs font-bold flex items-center gap-2 transition-all hover:scale-105 active:scale-95 ${processing ? 'bg-slate-700 text-slate-400 cursor-wait' : 'bg-purple-600 hover:bg-purple-500 text-white shadow-[0_0_20px_rgba(147,51,234,0.3)]'}`}
+                                    onClick={() => setAutoLoop(!autoLoop)}
+                                    className={`px-5 py-2.5 rounded-lg text-xs font-bold flex items-center gap-2 transition-all hover:scale-105 active:scale-95 border ${
+                                        autoLoop 
+                                        ? 'bg-red-500/10 border-red-500/50 text-red-400 hover:bg-red-500/20' 
+                                        : 'bg-emerald-600 hover:bg-emerald-500 text-white border-transparent shadow-[0_0_20px_rgba(16,185,129,0.3)]'
+                                    }`}
                                 >
-                                    <Icons.Zap /> {processing ? 'PROCESANDO DATA...' : 'EJECUTAR ANÁLISIS SINÁPTICO'}
+                                    {autoLoop ? <><Icons.Stop /> DETENER BUCLE</> : <><Icons.Play /> ACTIVAR BUCLE AUTOMÁTICO</>}
                                 </button>
+
+                                {!autoLoop && (
+                                    <button 
+                                        onClick={analyzeMarketReal}
+                                        disabled={processing}
+                                        className="px-4 py-2.5 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 transition-all"
+                                    >
+                                        <Icons.Zap /> ESCANEO ÚNICO
+                                    </button>
+                                )}
                             </div>
                         </div>
 
@@ -253,7 +345,7 @@ export const NeuralNetworkView = () => {
                         <div className="bg-slate-900/80 rounded-xl border border-slate-800 p-5 shadow-xl backdrop-blur-sm">
                             <div className="flex items-center gap-2 mb-4 text-slate-300 border-b border-slate-800 pb-2">
                                 <Icons.Settings /> 
-                                <h3 className="text-sm font-bold uppercase tracking-wider">Corteza Funcional (Pesos Reales)</h3>
+                                <h3 className="text-sm font-bold uppercase tracking-wider">Corteza Funcional (Configuración Real)</h3>
                             </div>
                             
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -285,7 +377,7 @@ export const NeuralNetworkView = () => {
                                     />
                                 </div>
 
-                                {/* Habilidades 3-10: Switches */}
+                                {/* Habilidades 3-10: Switches REPARADOS */}
                                 <AbilityToggle 
                                     label="3. Lógica RSI Real" 
                                     active={config.sentimentAnalysis} 
@@ -329,7 +421,7 @@ export const NeuralNetworkView = () => {
                                     color="slate"
                                 />
                                 <div onClick={() => toggleConfig('quantumMode')} 
-                                     className={`cursor-pointer p-3 rounded-lg border flex items-center justify-between transition-all hover:scale-[1.02] ${config.quantumMode 
+                                     className={`cursor-pointer p-3 rounded-lg border flex items-center justify-between transition-all hover:scale-[1.02] select-none ${config.quantumMode 
                                         ? 'bg-fuchsia-500/20 border-fuchsia-500/60 shadow-[0_0_15px_rgba(217,70,239,0.2)]' 
                                         : 'bg-slate-900 border-slate-700 opacity-60'}`}>
                                     <span className={`text-xs font-bold ${config.quantumMode ? 'text-fuchsia-300' : 'text-slate-400'}`}>10. INVERTIR LÓGICA</span>
@@ -352,33 +444,46 @@ export const NeuralNetworkView = () => {
                                 {loading ? (
                                     <div className="flex flex-col items-center justify-center h-40 gap-3">
                                         <div className="w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
-                                        <div className="text-xs text-slate-500 animate-pulse">Recuperando registros...</div>
+                                        <div className="text-xs text-slate-500 animate-pulse">Sincronizando registros...</div>
                                     </div>
                                 ) : memories.length === 0 ? (
                                     <div className="text-center py-10 text-slate-600 border border-dashed border-slate-800 rounded">
-                                        Sin datos de análisis previos. <br/> Ejecuta el escáner.
+                                        Sin datos. <br/> Activa el Bucle Automático.
                                     </div>
                                 ) : (
-                                    memories.map((mem) => (
-                                        <div key={mem.id} className="bg-slate-950 p-3 rounded border border-slate-800 hover:border-slate-600 transition-colors group">
-                                            <div className="flex justify-between items-start mb-1">
-                                                <div className="flex gap-2">
-                                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${mem.decision === 'LONG' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : mem.decision === 'SHORT' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' : 'bg-slate-500/10 text-slate-400 border border-slate-500/20'}`}>
-                                                        {mem.decision}
+                                    memories.map((mem) => {
+                                        // Calcular resultado visual si es posible
+                                        const entryPrice = mem.input_pattern.price;
+                                        const pnl = livePrice - entryPrice;
+                                        const isWin = (mem.decision === 'LONG' && pnl > 0) || (mem.decision === 'SHORT' && pnl < 0);
+                                        const isNeutral = mem.decision === 'HOLD';
+                                        
+                                        return (
+                                            <div key={mem.id} className={`p-3 rounded border transition-colors group ${isWin && !isNeutral ? 'bg-emerald-950/30 border-emerald-500/30' : !isWin && !isNeutral ? 'bg-rose-950/30 border-rose-500/30' : 'bg-slate-950 border-slate-800'}`}>
+                                                <div className="flex justify-between items-start mb-1">
+                                                    <div className="flex gap-2 items-center">
+                                                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${mem.decision === 'LONG' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : mem.decision === 'SHORT' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' : 'bg-slate-500/10 text-slate-400 border border-slate-500/20'}`}>
+                                                            {mem.decision}
+                                                        </span>
+                                                        <span className="text-[10px] text-slate-500">
+                                                            @ {entryPrice.toLocaleString()}
+                                                        </span>
+                                                    </div>
+                                                    <span className={`text-xs font-mono font-bold ${isWin && !isNeutral ? 'text-emerald-400' : !isWin && !isNeutral ? 'text-rose-400' : 'text-slate-500'}`}>
+                                                        {isNeutral ? '---' : isWin ? 'WIN' : 'LOSS'}
                                                     </span>
-                                                    {mem.strategy_used === 'QUANTUM_HEURISTIC' && <span className="text-[10px] text-fuchsia-400 font-bold px-1 border border-fuchsia-500/30 rounded bg-fuchsia-500/10">INV</span>}
                                                 </div>
-                                                <span className={`text-xs font-mono font-bold text-slate-300`}>
-                                                    Conf: {(mem.confidence_level * 100).toFixed(0)}%
-                                                </span>
+                                                <div className="flex justify-between items-end mt-2 opacity-60 group-hover:opacity-100 transition-opacity">
+                                                    <span className="text-[10px] text-slate-500 font-mono truncate max-w-[150px]">
+                                                        RSI: {mem.input_pattern?.rsi} | Vol: {mem.input_pattern?.volatility}
+                                                    </span>
+                                                    <span className="text-[10px] text-slate-600">
+                                                        {new Date(mem.created_at).toLocaleTimeString()}
+                                                    </span>
+                                                </div>
                                             </div>
-                                            <div className="flex justify-between items-end mt-2 opacity-60 group-hover:opacity-100 transition-opacity">
-                                                <span className="text-[10px] text-slate-500 font-mono truncate max-w-[150px]">
-                                                    RSI: {mem.input_pattern?.rsi} | V: {mem.input_pattern?.volatility}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    ))
+                                        );
+                                    })
                                 )}
                             </div>
                         </div>

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { AssetConfig } from '../../types';
 import { Icons } from '../../components/Icons';
@@ -8,23 +7,37 @@ const MASTER_ASSET_LIST = ['BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'ADA', 'DOGE', 'AV
 
 interface AssetManagerProps {
     accountBalance: { asset: string, free: string, locked: string }[];
+    savedAssetConfigs: AssetConfig[];
     onSaveConfig: (configs: AssetConfig[]) => void;
 }
 
-export const AssetManagerView = ({ accountBalance, onSaveConfig }: AssetManagerProps) => {
+export const AssetManagerView = ({ accountBalance, savedAssetConfigs, onSaveConfig }: AssetManagerProps) => {
     const [assets, setAssets] = useState<AssetConfig[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [saving, setSaving] = useState(false);
     const [autoMode, setAutoMode] = useState(false); // ESTADO DEL MODO AUTOMÁTICO
     
-    // Inicializar mezclando la lista maestra con los saldos reales
+    // Inicializar mezclando la lista maestra con los saldos reales y la CONFIGURACIÓN GUARDADA
     useEffect(() => {
         const mergedAssets: AssetConfig[] = MASTER_ASSET_LIST.map(symbol => {
+            // 1. Buscamos si ya existe una configuración guardada para este activo
+            const savedConfig = savedAssetConfigs.find(config => config.symbol === symbol);
+            
+            // 2. Obtenemos datos de balance en vivo
             const balanceData = accountBalance.find(b => b.asset === symbol);
             const totalBalance = balanceData 
                 ? parseFloat(balanceData.free) + parseFloat(balanceData.locked) 
                 : 0;
 
+            // 3. Si hay config guardada, la usamos y solo actualizamos el balance
+            if (savedConfig) {
+                return {
+                    ...savedConfig,
+                    balance: totalBalance
+                };
+            }
+
+            // 4. Si no, inicializamos con valores por defecto
             return {
                 symbol,
                 isActive: totalBalance > 0, // Auto-activar si hay fondos
@@ -39,7 +52,13 @@ export const AssetManagerView = ({ accountBalance, onSaveConfig }: AssetManagerP
         accountBalance.forEach(b => {
             if (!MASTER_ASSET_LIST.includes(b.asset) && b.asset !== 'USDT' && b.asset !== 'USDC' && b.asset !== 'FDUSD') {
                  const totalBalance = parseFloat(b.free) + parseFloat(b.locked);
-                 if (totalBalance > 0) {
+                 
+                 // Verificar si este activo "raro" ya estaba configurado
+                 const savedConfig = savedAssetConfigs.find(config => config.symbol === b.asset);
+                 
+                 if (savedConfig) {
+                     mergedAssets.push({ ...savedConfig, balance: totalBalance });
+                 } else if (totalBalance > 0) {
                      mergedAssets.push({
                         symbol: b.asset,
                         isActive: true,
@@ -53,7 +72,7 @@ export const AssetManagerView = ({ accountBalance, onSaveConfig }: AssetManagerP
         });
 
         setAssets(mergedAssets);
-    }, [accountBalance]);
+    }, [accountBalance, savedAssetConfigs]);
 
     const updateAsset = (symbol: string, updates: Partial<AssetConfig>) => {
         setAssets(prev => prev.map(a => a.symbol === symbol ? { ...a, ...updates } : a));
@@ -69,10 +88,10 @@ export const AssetManagerView = ({ accountBalance, onSaveConfig }: AssetManagerP
                 const fundedAssets = assets.filter(a => a.balance > 0).map(a => ({...a, isActive: true}));
                 onSaveConfig(fundedAssets); 
             } else {
-                onSaveConfig(assets.filter(a => a.isActive));
+                onSaveConfig(assets);
             }
             setSaving(false);
-        }, 1500);
+        }, 1000);
     };
 
     const filteredAssets = assets.filter(a => a.symbol.includes(searchTerm.toUpperCase()));
@@ -139,9 +158,9 @@ export const AssetManagerView = ({ accountBalance, onSaveConfig }: AssetManagerP
                             </div>
                             <button 
                                 onClick={() => setAutoMode(!autoMode)}
-                                className={`w-16 h-8 rounded-full transition-all relative shadow-inner ${autoMode ? 'bg-indigo-500 shadow-indigo-900/50' : 'bg-slate-700 shadow-slate-900/50'}`}
+                                className={`w-16 h-8 rounded-full p-1 transition-colors duration-300 ease-in-out focus:outline-none ${autoMode ? 'bg-indigo-500 shadow-indigo-900/50' : 'bg-slate-700 shadow-slate-900/50'}`}
                             >
-                                <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all shadow-lg ${autoMode ? 'left-9' : 'left-1'}`}></div>
+                                <div className={`bg-white w-6 h-6 rounded-full shadow-md transform transition-transform duration-300 ease-in-out ${autoMode ? 'translate-x-8' : 'translate-x-0'}`}></div>
                             </button>
                          </div>
                     </div>
@@ -174,15 +193,12 @@ export const AssetManagerView = ({ accountBalance, onSaveConfig }: AssetManagerP
                                         </div>
                                     </div>
                                 </div>
-                                <div className="relative inline-block w-12 h-6 align-middle select-none transition duration-200 ease-in">
-                                    <input 
-                                        type="checkbox" 
-                                        checked={asset.isActive}
-                                        onChange={() => updateAsset(asset.symbol, { isActive: !asset.isActive })}
-                                        className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer transition-all duration-300 transform translate-x-0 checked:translate-x-full checked:border-yellow-500"
-                                    />
-                                    <label className={`toggle-label block overflow-hidden h-6 rounded-full cursor-pointer transition-colors duration-300 ${asset.isActive ? 'bg-yellow-500' : 'bg-slate-700'}`}></label>
-                                </div>
+                                <button 
+                                    onClick={() => updateAsset(asset.symbol, { isActive: !asset.isActive })}
+                                    className={`w-12 h-6 rounded-full p-1 transition-colors duration-300 ease-in-out focus:outline-none ${asset.isActive ? 'bg-yellow-500' : 'bg-slate-700'}`}
+                                >
+                                    <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-300 ease-in-out ${asset.isActive ? 'translate-x-6' : 'translate-x-0'}`}></div>
+                                </button>
                             </div>
 
                             {/* Cuerpo de Configuración (Solo visible si activo) */}

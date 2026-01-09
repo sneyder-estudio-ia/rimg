@@ -4,6 +4,7 @@ import { EvaCore } from './src/modulos/eva/EvaCore';
 import { NeuralNetworkView } from './src/modulos/red-neuronal/NeuralNetworkView';
 import { ConfigurationView } from './src/modulos/configuracion/ConfigurationView';
 import { AssetManagerView } from './src/modulos/activos/AssetManagerView';
+import { HolaMundoView } from './src/modulos/hola-mundo/HolaMundoView';
 import { Icons } from './src/components/Icons';
 import { BinanceConfig, AssetConfig, View } from './src/types';
 
@@ -11,7 +12,7 @@ export default function App() {
   const [currentView, setCurrentView] = useState<View>('DASHBOARD');
   const [dbConnected, setDbConnected] = useState(false);
   
-  // Estado Global de Configuración (Valores por defecto para iniciar UI)
+  // Estado Global de Configuración
   const [config, setConfig] = useState<BinanceConfig>({
     email: '',
     apiKey: '',
@@ -25,6 +26,9 @@ export default function App() {
     operationDuration: 60,
     autonomousMode: false
   });
+
+  // Estado Global de Activos (Persistencia de Protocolo)
+  const [assetConfigs, setAssetConfigs] = useState<AssetConfig[]>([]);
 
   // Estado Simulado de Balance (Se pasará al Gestor de Activos)
   const [accountBalance, setAccountBalance] = useState([
@@ -49,17 +53,18 @@ export default function App() {
 
   const handleSaveConfig = async () => {
     console.log("Configuración guardada en memoria local y lista para sync:", config);
-    // Aquí iría la lógica real de guardado en Supabase si fuera necesario
   };
 
   const handleSaveAssets = (assets: AssetConfig[]) => {
-    console.log("Matriz de activos actualizada:", assets);
+    console.log("Matriz de activos actualizada y persistida en Memoria RAM:", assets);
+    setAssetConfigs(assets);
   };
 
   const renderContent = () => {
     switch (currentView) {
       case 'DASHBOARD':
-        return <EvaCore />;
+        // PASAMOS LA CONFIGURACIÓN REAL AL NÚCLEO PARA TRADING EN VIVO
+        return <EvaCore config={config} />;
       case 'EVA_BRAIN':
         return <NeuralNetworkView />;
       case 'SETTINGS':
@@ -75,11 +80,14 @@ export default function App() {
         return (
           <AssetManagerView 
             accountBalance={accountBalance}
+            savedAssetConfigs={assetConfigs}
             onSaveConfig={handleSaveAssets}
           />
         );
+      case 'HOLA_MUNDO':
+        return <HolaMundoView />;
       default:
-        return <EvaCore />;
+        return <EvaCore config={config} />;
     }
   };
 
@@ -106,12 +114,13 @@ export default function App() {
       {/* SIDEBAR COMPACTO */}
       <aside className="w-20 border-r border-slate-800/60 bg-slate-950/50 flex flex-col items-center py-6 relative z-20 hidden md:flex">
         
-        {/* NAV SECTION START - Logo removed */}
         <nav className="flex-1 w-full flex flex-col items-center gap-4">
           <NavItem view="DASHBOARD" icon={Icons.Activity} label="Panel de Control" />
           <NavItem view="EVA_BRAIN" icon={Icons.Brain} label="Red Neuronal" />
           <NavItem view="ASSETS" icon={Icons.Coins} label="Gestor de Activos" />
           <NavItem view="SETTINGS" icon={Icons.Settings} label="Configuración" />
+          <div className="w-8 h-[1px] bg-slate-800 my-2"></div>
+          <NavItem view="HOLA_MUNDO" icon={Icons.Globe} label="Hola Mundo" />
         </nav>
 
         <div className="mt-auto mb-4">
@@ -124,7 +133,7 @@ export default function App() {
         {/* Scanlines Effect */}
         <div className="scan-line pointer-events-none fixed inset-0 z-50 opacity-[0.03]"></div>
         
-        {/* Header Mobile (Visible only on small screens) */}
+        {/* Header Mobile */}
         <div className="md:hidden p-4 border-b border-slate-800 flex justify-between items-center bg-slate-950">
            <div className="flex items-center gap-3">
               <div className="transform scale-110"><Icons.Binance /></div>
@@ -132,6 +141,7 @@ export default function App() {
            </div>
            <div className="flex gap-2">
              <button onClick={() => setCurrentView('DASHBOARD')} className={`p-2 rounded ${currentView === 'DASHBOARD' ? 'bg-blue-600/20 text-blue-400' : 'text-slate-400'}`}><Icons.Activity /></button>
+             <button onClick={() => setCurrentView('HOLA_MUNDO')} className={`p-2 rounded ${currentView === 'HOLA_MUNDO' ? 'bg-blue-600/20 text-blue-400' : 'text-slate-400'}`}><Icons.Globe /></button>
            </div>
         </div>
 
