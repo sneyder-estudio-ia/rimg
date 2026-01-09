@@ -6,8 +6,10 @@ import { NeuralNetworkView } from './src/modulos/red-neuronal/NeuralNetworkView'
 import { ConfigurationView } from './src/modulos/configuracion/ConfigurationView';
 import { AssetManagerView } from './src/modulos/activos/AssetManagerView';
 import { HolaMundoView } from './src/modulos/hola-mundo/HolaMundoView';
+import { WalletView } from './src/modulos/billetera/WalletView';
 import { IntroAnimation } from './src/modulos/intro/IntroAnimation';
 import { Icons } from './src/components/Icons';
+import { getAccountInfo } from './src/services/binanceService';
 import { BinanceConfig, AssetConfig, View } from './src/types';
 
 // Configuración por defecto para inicialización
@@ -67,13 +69,33 @@ export default function App() {
     }
   });
 
-  // Estado Simulado de Balance
-  const [accountBalance, setAccountBalance] = useState([
-    { asset: 'USDT', free: '5420.50', locked: '1200.00' },
-    { asset: 'BTC', free: '0.045', locked: '0.00' },
-    { asset: 'ETH', free: '1.2', locked: '0.5' },
-    { asset: 'SOL', free: '15.0', locked: '0.0' }
-  ]);
+  // --- ESTADO DE BALANCE REAL (Cero Latencia Mental: Sin datos Mock) ---
+  const [accountBalance, setAccountBalance] = useState<{ asset: string, free: string, locked: string }[]>([]);
+  const [isLoadingBalance, setIsLoadingBalance] = useState(false);
+
+  // --- FUNCIÓN DE SINCRONIZACIÓN REAL BINANCE ---
+  const fetchWalletData = async () => {
+    if (!config.apiKey || !config.apiSecret) {
+        if(currentView === 'WALLET') addSystemLog("WALLET_ERR: API Keys no configuradas. Configure en Ajustes.", 'WARN');
+        return;
+    }
+
+    setIsLoadingBalance(true);
+    try {
+        const data = await getAccountInfo(config.apiKey, config.apiSecret);
+        if (data && data.balances) {
+            // Filtramos solo los que tienen saldo para optimizar memoria, pero guardamos todo si es necesario
+            // La API devuelve TODO, filtramos en la vista o aquí. Guardamos crudo para flexibilidad.
+            setAccountBalance(data.balances);
+            addSystemLog("WALLET_SYNC: Bóveda sincronizada con Binance Mainnet.", 'SYS');
+        }
+    } catch (error: any) {
+        console.error(error);
+        addSystemLog(`WALLET_FAIL: Error de conexión API: ${error.message}`, 'WARN');
+    } finally {
+        setIsLoadingBalance(false);
+    }
+  };
 
   // --- EFECTOS DE PERSISTENCIA ---
   
@@ -86,6 +108,13 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('eva_assets_v10', JSON.stringify(assetConfigs));
   }, [assetConfigs]);
+
+  // Trigger de actualización de billetera al entrar en vistas relevantes
+  useEffect(() => {
+      if (currentView === 'WALLET' || currentView === 'ASSETS') {
+          fetchWalletData();
+      }
+  }, [currentView]);
 
   // Verificación de conexión a Supabase
   useEffect(() => {
@@ -105,6 +134,8 @@ export default function App() {
 
   const handleSaveConfig = async () => {
     addSystemLog("SYNC: Configuración guardada y persistida.", 'SYS');
+    // Intentar reconectar wallet si se guardan nuevas keys
+    fetchWalletData();
   };
 
   const handleSaveAssets = (assets: AssetConfig[]) => {
@@ -126,6 +157,16 @@ export default function App() {
         return (
             <NeuralNetworkView 
                 onLog={addSystemLog} 
+            />
+        );
+      case 'WALLET':
+        return (
+            <WalletView 
+                accountBalance={accountBalance}
+                onNavigate={(view) => setCurrentView(view)}
+                onRefresh={fetchWalletData}
+                isLoading={isLoadingBalance}
+                hasApiKeys={!!config.apiKey && !!config.apiSecret}
             />
         );
       case 'SETTINGS':
@@ -205,6 +246,7 @@ export default function App() {
             <nav className="flex-1 w-full flex flex-col items-center gap-4">
               <SidebarItem view="DASHBOARD" icon={Icons.Activity} label="Panel de Control" />
               <SidebarItem view="EVA_BRAIN" icon={Icons.Brain} label="Red Neuronal" />
+              <SidebarItem view="WALLET" icon={Icons.Wallet} label="Billetera" />
               <SidebarItem view="ASSETS" icon={Icons.Coins} label="Gestor de Activos" />
               <SidebarItem view="SETTINGS" icon={Icons.Settings} label="Configuración" />
               <div className="w-8 h-[1px] bg-slate-800 my-2"></div>
@@ -238,9 +280,9 @@ export default function App() {
             <div className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-950 border-t border-slate-800 flex justify-around items-center z-50 backdrop-blur-md pb-safe">
                 <MobileNavItem view="DASHBOARD" icon={Icons.Activity} label="Panel" />
                 <MobileNavItem view="EVA_BRAIN" icon={Icons.Brain} label="Cerebro" />
+                <MobileNavItem view="WALLET" icon={Icons.Wallet} label="Wallet" />
                 <MobileNavItem view="ASSETS" icon={Icons.Coins} label="Activos" />
                 <MobileNavItem view="SETTINGS" icon={Icons.Settings} label="Ajustes" />
-                <MobileNavItem view="HOLA_MUNDO" icon={Icons.Globe} label="Info" />
             </div>
           </main>
 
