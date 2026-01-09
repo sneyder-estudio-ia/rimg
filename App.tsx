@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import { EvaCore } from './src/modulos/eva/EvaCore';
@@ -5,6 +6,7 @@ import { NeuralNetworkView } from './src/modulos/red-neuronal/NeuralNetworkView'
 import { ConfigurationView } from './src/modulos/configuracion/ConfigurationView';
 import { AssetManagerView } from './src/modulos/activos/AssetManagerView';
 import { HolaMundoView } from './src/modulos/hola-mundo/HolaMundoView';
+import { IntroAnimation } from './src/modulos/intro/IntroAnimation';
 import { Icons } from './src/components/Icons';
 import { BinanceConfig, AssetConfig, View } from './src/types';
 
@@ -24,6 +26,7 @@ const DEFAULT_CONFIG: BinanceConfig = {
 };
 
 export default function App() {
+  const [showIntro, setShowIntro] = useState(true); // Estado para controlar la intro
   const [currentView, setCurrentView] = useState<View>('DASHBOARD');
   const [dbConnected, setDbConnected] = useState(false);
   
@@ -159,52 +162,59 @@ export default function App() {
   );
 
   return (
-    <div className="flex h-screen bg-slate-950 text-slate-200 selection:bg-blue-500/30 font-sans overflow-hidden">
-      
-      {/* SIDEBAR COMPACTO (SOLO DESKTOP) */}
-      <aside className="w-20 border-r border-slate-800/60 bg-slate-950/50 hidden md:flex flex-col items-center py-6 relative z-20">
-        <nav className="flex-1 w-full flex flex-col items-center gap-4">
-          <SidebarItem view="DASHBOARD" icon={Icons.Activity} label="Panel de Control" />
-          <SidebarItem view="EVA_BRAIN" icon={Icons.Brain} label="Red Neuronal" />
-          <SidebarItem view="ASSETS" icon={Icons.Coins} label="Gestor de Activos" />
-          <SidebarItem view="SETTINGS" icon={Icons.Settings} label="Configuración" />
-          <div className="w-8 h-[1px] bg-slate-800 my-2"></div>
-          <SidebarItem view="HOLA_MUNDO" icon={Icons.Globe} label="Hola Mundo" />
-        </nav>
-        <div className="mt-auto mb-4">
-           <div className={`w-3 h-3 rounded-full ${dbConnected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]'}`} title={dbConnected ? "DB Online" : "DB Offline"}></div>
-        </div>
-      </aside>
+    <>
+      {/* RENDERIZADO CONDICIONAL DE LA INTRO */}
+      {showIntro ? (
+        <IntroAnimation onComplete={() => setShowIntro(false)} />
+      ) : (
+        <div className="flex h-screen bg-slate-950 text-slate-200 selection:bg-blue-500/30 font-sans overflow-hidden animate-in fade-in duration-1000">
+          
+          {/* SIDEBAR COMPACTO (SOLO DESKTOP) */}
+          <aside className="w-20 border-r border-slate-800/60 bg-slate-950/50 hidden md:flex flex-col items-center py-6 relative z-20">
+            <nav className="flex-1 w-full flex flex-col items-center gap-4">
+              <SidebarItem view="DASHBOARD" icon={Icons.Activity} label="Panel de Control" />
+              <SidebarItem view="EVA_BRAIN" icon={Icons.Brain} label="Red Neuronal" />
+              <SidebarItem view="ASSETS" icon={Icons.Coins} label="Gestor de Activos" />
+              <SidebarItem view="SETTINGS" icon={Icons.Settings} label="Configuración" />
+              <div className="w-8 h-[1px] bg-slate-800 my-2"></div>
+              <SidebarItem view="HOLA_MUNDO" icon={Icons.Globe} label="Hola Mundo" />
+            </nav>
+            <div className="mt-auto mb-4">
+               <div className={`w-3 h-3 rounded-full ${dbConnected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]'}`} title={dbConnected ? "DB Online" : "DB Offline"}></div>
+            </div>
+          </aside>
 
-      {/* MAIN CONTENT AREA */}
-      <main className="flex-1 flex flex-col relative overflow-hidden h-full">
-        {/* Scanlines Effect */}
-        <div className="scan-line pointer-events-none fixed inset-0 z-50 opacity-[0.03]"></div>
-        
-        {/* HEADER MÓVIL (SOLO BRANDING) */}
-        <div className="md:hidden px-4 py-3 border-b border-slate-800 flex justify-between items-center bg-slate-950/90 backdrop-blur z-30 sticky top-0">
-           <div className="flex items-center gap-3">
-              <div className="transform scale-110"><Icons.Binance /></div>
-              <span className="font-bold text-white tracking-wide text-lg">EVA v10.5</span>
-           </div>
-           <div className={`w-2 h-2 rounded-full ${dbConnected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-rose-500'}`}></div>
-        </div>
+          {/* MAIN CONTENT AREA */}
+          <main className="flex-1 flex flex-col relative overflow-hidden h-full">
+            {/* Scanlines Effect */}
+            <div className="scan-line pointer-events-none fixed inset-0 z-50 opacity-[0.03]"></div>
+            
+            {/* HEADER MÓVIL (SOLO BRANDING) */}
+            <div className="md:hidden px-4 py-3 border-b border-slate-800 flex justify-between items-center bg-slate-950/90 backdrop-blur z-30 sticky top-0">
+               <div className="flex items-center gap-3">
+                  <div className="transform scale-110"><Icons.Binance /></div>
+                  <span className="font-bold text-white tracking-wide text-lg">EVA v10.5</span>
+               </div>
+               <div className={`w-2 h-2 rounded-full ${dbConnected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-rose-500'}`}></div>
+            </div>
 
-        {/* CONTENEDOR DE VISTAS */}
-        <div className="flex-1 overflow-hidden relative flex flex-col pb-[70px] md:pb-0">
-          {renderContent()}
-        </div>
+            {/* CONTENEDOR DE VISTAS */}
+            <div className="flex-1 overflow-hidden relative flex flex-col pb-[70px] md:pb-0">
+              {renderContent()}
+            </div>
 
-        {/* BARRA DE NAVEGACIÓN INFERIOR (SOLO MÓVIL) */}
-        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-950 border-t border-slate-800 flex justify-around items-center z-50 backdrop-blur-md pb-safe">
-            <MobileNavItem view="DASHBOARD" icon={Icons.Activity} label="Panel" />
-            <MobileNavItem view="EVA_BRAIN" icon={Icons.Brain} label="Cerebro" />
-            <MobileNavItem view="ASSETS" icon={Icons.Coins} label="Activos" />
-            <MobileNavItem view="SETTINGS" icon={Icons.Settings} label="Ajustes" />
-            <MobileNavItem view="HOLA_MUNDO" icon={Icons.Globe} label="Info" />
-        </div>
-      </main>
+            {/* BARRA DE NAVEGACIÓN INFERIOR (SOLO MÓVIL) */}
+            <div className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-950 border-t border-slate-800 flex justify-around items-center z-50 backdrop-blur-md pb-safe">
+                <MobileNavItem view="DASHBOARD" icon={Icons.Activity} label="Panel" />
+                <MobileNavItem view="EVA_BRAIN" icon={Icons.Brain} label="Cerebro" />
+                <MobileNavItem view="ASSETS" icon={Icons.Coins} label="Activos" />
+                <MobileNavItem view="SETTINGS" icon={Icons.Settings} label="Ajustes" />
+                <MobileNavItem view="HOLA_MUNDO" icon={Icons.Globe} label="Info" />
+            </div>
+          </main>
 
-    </div>
+        </div>
+      )}
+    </>
   );
 }
