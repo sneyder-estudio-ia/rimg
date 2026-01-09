@@ -1,15 +1,25 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createChart, ColorType, CrosshairMode, IChartApi, ISeriesApi } from 'lightweight-charts';
 import { Icons } from '../../components/Icons';
 import { subscribeToTicker, subscribeToDepth, executeOrder, getCandles } from '../../services/binanceService';
 import { BinanceConfig } from '../../types';
 
+type ChartType = 'CANDLES' | 'LINE' | 'AREA' | 'BARS' | 'HEIKIN';
+
 export const EvaCore = ({ config }: { config: BinanceConfig }) => {
-  // --- ESTADO DEL CHART Y DATOS REALES ---
-  const [prices, setPrices] = useState<number[]>([]);
+  // --- ESTADO DE DATOS ---
   const [currentPrice, setCurrentPrice] = useState(0);
   const [priceChange, setPriceChange] = useState(0);
   const [volume, setVolume] = useState('0');
   
+  // --- ESTADO DEL GRÁFICO ---
+  const [chartType, setChartType] = useState<ChartType>('CANDLES');
+  const [is3DMode, setIs3DMode] = useState(false);
+  const chartContainerRef = useRef<HTMLDivElement>(null);
+  const chartApiRef = useRef<IChartApi | null>(null);
+  const seriesRef = useRef<ISeriesApi<any> | null>(null);
+  const candleDataRef = useRef<any[]>([]); // Referencia mutable para updates rápidos
+
   // --- ESTADO DE EJECUCIÓN ---
   const [executing, setExecuting] = useState(false);
   const [lastOrder, setLastOrder] = useState<string | null>(null);
@@ -22,12 +32,11 @@ export const EvaCore = ({ config }: { config: BinanceConfig }) => {
   // --- ESTADO DEL LOG ---
   const [logs, setLogs] = useState<string[]>([
       "EVA_SYS_INIT: Conectando a Binance Mainnet...",
-      "NET_SEC: Canal WSS encriptado establecido.",
-      "LIVE_FEED: Esperando tick inicial...",
+      "GRAPH_ENG: Motor de renderizado vectorial iniciado.",
+      "LIVE_FEED: Sincronizando velas...",
   ]);
   
   const terminalRef = useRef<HTMLDivElement>(null);
-  const mainContainerRef = useRef<HTMLDivElement>(null);
 
   // --- FUNCIÓN HELPER PARA LOGS ---
   const addLog = (msg: string, type: 'INFO' | 'WARN' | 'EXEC' = 'INFO') => {
@@ -36,53 +45,200 @@ export const EvaCore = ({ config }: { config: BinanceConfig }) => {
       setLogs(prev => [...prev.slice(-19), `[${time}] ${prefix} ${msg}`]);
   };
 
-  // --- CONEXIÓN A DATOS REALES (WEBSOCKETS) ---
+  // --- INICIALIZACIÓN DEL GRÁFICO ---
   useEffect(() => {
+    if (!chartContainerRef.current) return;
+
+    // Flag para controlar si este efecto ha sido limpiado
+    let isCleanedUp = false;
+
+    const chart = createChart(chartContainerRef.current, {
+        layout: {
+            background: { type: ColorType.Solid, color: 'transparent' },
+            textColor: '#94a3b8',
+        },
+        grid: {
+            vertLines: { color: '#1e293b' },
+            horzLines: { color: '#1e293b' },
+        },
+        width: chartContainerRef.current.clientWidth,
+        height: 400, // Altura fija inicial
+        crosshair: {
+            mode: CrosshairMode.Normal,
+        },
+        timeScale: {
+            borderColor: '#334155',
+            timeVisible: true,
+            secondsVisible: false,
+        },
+        rightPriceScale: {
+            borderColor: '#334155',
+        },
+    });
+
+    chartApiRef.current = chart;
+
+    // Función para crear la serie según el tipo
+    const createSeries = (type: ChartType, data: any[]) => {
+        // Verificar si el chart ya fue destruido antes de intentar operar
+        if (isCleanedUp || !chartApiRef.current) return;
+
+        try {
+            if (seriesRef.current) {
+                // Verificar si la serie pertenece al chart actual (protección adicional)
+                try {
+                    chart.removeSeries(seriesRef.current);
+                } catch (e) {
+                    // Ignorar si la serie ya no existe
+                }
+            }
+
+            let newSeries;
+            switch (type) {
+                case 'CANDLES':
+                case 'HEIKIN': 
+                    newSeries = chart.addCandlestickSeries({
+                        upColor: '#10b981',
+                        downColor: '#f43f5e',
+                        borderVisible: false,
+                        wickUpColor: '#10b981',
+                        wickDownColor: '#f43f5e',
+                    });
+                    break;
+                case 'LINE':
+                    newSeries = chart.addLineSeries({
+                        color: '#3b82f6',
+                        lineWidth: 2,
+                    });
+                    break;
+                case 'AREA':
+                    newSeries = chart.addAreaSeries({
+                        lineColor: '#8b5cf6',
+                        topColor: 'rgba(139, 92, 246, 0.4)',
+                        bottomColor: 'rgba(139, 92, 246, 0.0)',
+                    });
+                    break;
+                case 'BARS':
+                    newSeries = chart.addBarSeries({
+                        upColor: '#10b981',
+                        downColor: '#f43f5e',
+                    });
+                    break;
+                default:
+                    newSeries = chart.addCandlestickSeries();
+            }
+
+            newSeries.setData(data);
+            seriesRef.current = newSeries;
+            chart.timeScale().fitContent();
+        } catch (error) {
+            console.warn("Chart operation failed:", error);
+        }
+    };
+
     // 1. Cargar historia inicial (Klines)
     const loadHistory = async () => {
         try {
-            const candles = await getCandles('BTCUSDT', '15m', 60);
-            if (candles.length > 0) {
-                const history = candles.map(c => c.close);
-                setPrices(history);
-                setCurrentPrice(history[history.length - 1]);
+            const rawCandles = await getCandles('BTCUSDT', '15m', 100);
+            
+            // Si el efecto se limpió mientras cargábamos, abortamos
+            if (isCleanedUp) return;
+
+            // Adaptar datos para Lightweight Charts
+            const formattedData = rawCandles.map(c => ({
+                time: c.time / 1000, // Timestamps en segundos
+                open: c.open,
+                high: c.high,
+                low: c.low,
+                close: c.close,
+                value: c.close // Para gráficos de línea/área
+            }));
+
+            candleDataRef.current = formattedData;
+            createSeries(chartType, formattedData);
+            
+            if (formattedData.length > 0) {
+                const last = formattedData[formattedData.length - 1];
+                setCurrentPrice(last.close);
                 addLog("MARKET_DATA: Historial de precios sincronizado.");
             }
         } catch (e) {
-            addLog("ERROR: Fallo al cargar historial Klines.", 'WARN');
+            if (!isCleanedUp) {
+                addLog("ERROR: Fallo al cargar historial Klines.", 'WARN');
+            }
         }
     };
+
     loadHistory();
 
-    // 2. Suscripción a Ticker en tiempo real
-    const tickerWs = subscribeToTicker('BTCUSDT', (data) => {
-        setCurrentPrice(prev => {
-            if (prev !== data.price) {
-                // Actualizar array de precios para el gráfico (shift simple)
-                setPrices(oldPrices => {
-                    const newP = [...oldPrices];
-                    newP.shift(); 
-                    newP.push(data.price);
-                    return newP;
-                });
+    // Resize Observer
+    const handleResize = () => {
+        if (chartContainerRef.current && chartApiRef.current && !isCleanedUp) {
+            try {
+                chartApiRef.current.applyOptions({ width: chartContainerRef.current.clientWidth });
+            } catch (e) {
+                // Silenciar error si el resize ocurre durante destrucción
             }
-            return data.price;
-        });
+        }
+    };
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+        isCleanedUp = true;
+        window.removeEventListener('resize', handleResize);
+        
+        // Limpiar referencias para que otros efectos (WS) no intenten usar objetos destruidos
+        seriesRef.current = null;
+        
+        if (chartApiRef.current) {
+            try {
+                chartApiRef.current.remove();
+            } catch(e) {
+                // Ignorar error al remover
+            }
+            chartApiRef.current = null;
+        }
+    };
+  }, [chartType]); // Recrear gráfico si cambia el tipo
+
+  // --- CONEXIÓN WEBSOCKET (TICKER) ---
+  useEffect(() => {
+    const tickerWs = subscribeToTicker('BTCUSDT', (data) => {
+        setCurrentPrice(data.price);
         setPriceChange(data.change24h);
         setVolume(data.volume);
+
+        // Actualizar vela en tiempo real
+        // IMPORTANTE: Verificar que el chart y la serie existan antes de actualizar
+        if (chartApiRef.current && seriesRef.current && candleDataRef.current.length > 0) {
+            try {
+                const lastCandle = candleDataRef.current[candleDataRef.current.length - 1];
+                
+                const updatedCandle = {
+                    ...lastCandle,
+                    close: data.price,
+                    high: Math.max(lastCandle.high, data.price),
+                    low: Math.min(lastCandle.low, data.price),
+                    value: data.price
+                };
+
+                seriesRef.current.update(updatedCandle);
+                // Actualizamos ref local
+                candleDataRef.current[candleDataRef.current.length - 1] = updatedCandle;
+            } catch (error) {
+                // Si falla (ej. chart disposed), ignoramos este frame
+            }
+        }
     });
 
-    // 3. Suscripción a Libro de Órdenes
     const depthWs = subscribeToDepth('BTCUSDT', (data) => {
-        // Procesar Asks (Venta)
         const newAsks = data.asks.slice(0, 14).map((a: any) => ({
             price: a.price,
             size: a.size,
             total: a.price * a.size,
-            relativeSize: Math.min((a.size * a.price / 100000) * 100, 100) // Heurística visual simple
+            relativeSize: Math.min((a.size * a.price / 100000) * 100, 100)
         }));
         
-        // Procesar Bids (Compra)
         const newBids = data.bids.slice(0, 14).map((b: any) => ({
             price: b.price,
             size: b.size,
@@ -108,30 +264,14 @@ export const EvaCore = ({ config }: { config: BinanceConfig }) => {
           setTimeout(() => setErrorMsg(null), 3000);
           return;
       }
-
       setExecuting(true);
       addLog(`INIT_ORDER: Preparando orden ${side} MARKET...`, 'EXEC');
-
       try {
-          // Calcular cantidad basada en config (Simplificado para demo: 0.001 BTC fijo o lógica real)
-          // NOTA: Para producción real, calcular qty en base a balance y precio.
-          // Aquí usaremos una cantidad mínima segura para evitar errores de LOT_SIZE si el usuario tiene saldo.
-          // OJO: Si no hay saldo real, Binance devolverá error.
-          const quantity = 0.0001; // Cantidad muy pequeña para pruebas reales
-
-          const result = await executeOrder(
-              config.apiKey,
-              config.apiSecret,
-              'BTCUSDT',
-              side,
-              quantity
-          );
-
+          const quantity = 0.0001;
+          const result = await executeOrder(config.apiKey, config.apiSecret, 'BTCUSDT', side, quantity);
           setLastOrder(`ORD-${result.orderId}`);
           addLog(`SUCCESS: Orden ${result.orderId} ejecutada. Precio: ${result.cummulativeQuoteQty}`, 'EXEC');
-          
       } catch (e: any) {
-          console.error(e);
           const msg = e.message || "Error desconocido en API Binance";
           setErrorMsg(msg.substring(0, 40) + "...");
           addLog(`FAIL: ${msg}`, 'WARN');
@@ -140,39 +280,16 @@ export const EvaCore = ({ config }: { config: BinanceConfig }) => {
       }
   };
 
-  // Auto-scroll terminal
   useEffect(() => {
     if (terminalRef.current) {
         terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
     }
   }, [logs]);
 
-  // --- RENDERIZADO DEL GRÁFICO ---
-  const renderChart = () => {
-      if (prices.length === 0) return { path: "", fill: "" };
-      const min = Math.min(...prices);
-      const max = Math.max(...prices);
-      const range = max - min || 1;
-      const height = 300;
-      const width = 1000;
-      
-      const points = prices.map((p, i) => {
-          const x = (i / (prices.length - 1)) * width;
-          const y = height - ((p - min) / range) * height * 0.8 - 20; 
-          return `${x},${y}`;
-      });
-
-      const linePath = `M${points.join(' L')}`;
-      const areaPath = `${linePath} L ${width},${height} L 0,${height} Z`;
-
-      return { path: linePath, area: areaPath };
-  };
-
-  const { path, area } = renderChart();
   const isPositive = priceChange >= 0;
 
   return (
-    <div ref={mainContainerRef} className="flex flex-col h-full bg-[#050b14] font-mono text-slate-300 relative overflow-y-auto custom-scrollbar">
+    <div className="flex flex-col h-full bg-[#050b14] font-mono text-slate-300 relative overflow-y-auto custom-scrollbar">
         {/* BACKGROUND GRIDS */}
         <div className="absolute inset-0 bg-[linear-gradient(rgba(18,24,38,0.5)_1px,transparent_1px),linear-gradient(90deg,rgba(18,24,38,0.5)_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none h-full min-h-screen"></div>
 
@@ -211,43 +328,51 @@ export const EvaCore = ({ config }: { config: BinanceConfig }) => {
         {/* --- MAIN WORKSPACE --- */}
         <div className="flex-1 flex flex-col lg:flex-row relative z-10 p-4 gap-4 min-h-0">
             
-            {/* COLUMNA IZQUIERDA */}
+            {/* COLUMNA IZQUIERDA: GRÁFICO + CONTROLES */}
             <div className="flex-[3] flex flex-col gap-4 min-w-0">
                 
-                {/* 1. CHART CONTAINER */}
-                <div className="flex-1 bg-slate-900/40 border border-slate-800 rounded-xl relative overflow-hidden group shadow-2xl min-h-[400px]">
-                    <div className="absolute top-4 left-4 z-10 flex gap-2">
-                        <span className="text-[10px] text-slate-500 bg-slate-950 px-2 py-1 rounded border border-slate-800">DATA FEED: REALTIME</span>
-                    </div>
+                {/* 1. CHART CONTAINER CON SOPORTE 3D */}
+                <div className="chart-3d-wrapper relative z-20">
+                    <div className={`flex-1 bg-slate-900/40 border border-slate-800 rounded-xl relative overflow-hidden group shadow-2xl min-h-[450px] transition-all duration-500 flex flex-col ${is3DMode ? 'chart-3d-active bg-slate-900/80' : ''}`}>
+                        
+                        {/* TOOLBAR DEL GRÁFICO */}
+                        <div className="flex items-center justify-between p-2 border-b border-slate-800 bg-slate-950/50 backdrop-blur-sm z-30">
+                            <div className="flex items-center gap-1">
+                                <span className="text-[10px] text-slate-500 font-bold px-2">TIPO:</span>
+                                {['CANDLES', 'LINE', 'AREA', 'BARS'].map((type) => (
+                                    <button
+                                        key={type}
+                                        onClick={() => setChartType(type as ChartType)}
+                                        className={`px-3 py-1 rounded text-[10px] font-bold transition-all ${chartType === type ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}
+                                    >
+                                        {type === 'CANDLES' ? 'VELAS' : type === 'LINE' ? 'LÍNEA' : type === 'AREA' ? 'ÁREA' : 'BARRAS'}
+                                    </button>
+                                ))}
+                            </div>
+                            
+                            <div className="flex items-center gap-2">
+                                <button 
+                                    onClick={() => setIs3DMode(!is3DMode)}
+                                    className={`px-3 py-1 rounded text-[10px] font-bold border transition-all flex items-center gap-2 ${is3DMode ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.3)]' : 'border-slate-700 text-slate-400 hover:text-white'}`}
+                                >
+                                    <Icons.Layers /> {is3DMode ? 'MODO 3D: ON' : 'VISTA 3D'}
+                                </button>
+                                <span className="text-[10px] text-slate-500 bg-slate-950 px-2 py-1 rounded border border-slate-800">15m</span>
+                            </div>
+                        </div>
 
-                    <div className="absolute inset-0 z-0">
-                         {prices.length > 0 ? (
-                             <svg className="w-full h-full overflow-visible" preserveAspectRatio="none" viewBox="0 0 1000 300">
-                                <defs>
-                                    <linearGradient id="chartGradient" x1="0" x2="0" y1="0" y2="1">
-                                        <stop offset="0%" stopColor={isPositive ? '#10b981' : '#f43f5e'} stopOpacity="0.3" />
-                                        <stop offset="100%" stopColor={isPositive ? '#10b981' : '#f43f5e'} stopOpacity="0" />
-                                    </linearGradient>
-                                </defs>
-                                <path d={area} fill="url(#chartGradient)" />
-                                <path d={path} fill="none" stroke={isPositive ? '#10b981' : '#f43f5e'} strokeWidth="2.5" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-                             </svg>
-                         ) : (
-                             <div className="flex items-center justify-center h-full text-slate-600 animate-pulse">CARGANDO DATOS DE MERCADO...</div>
-                         )}
-                         
-                         {/* Pulsing Dot */}
-                         {prices.length > 0 && (
-                             <div className="absolute right-0 w-2 h-2 rounded-full transform -translate-y-1/2 translate-x-1/2 transition-all duration-300 ease-out" 
-                                  style={{ 
-                                      top: `${300 - ((currentPrice - Math.min(...prices)) / (Math.max(...prices) - Math.min(...prices) || 1)) * 300 * 0.8 - 20}px`,
-                                      backgroundColor: isPositive ? '#10b981' : '#f43f5e',
-                                      boxShadow: isPositive ? '0 0 15px #10b981' : '0 0 15px #f43f5e'
-                                  }}
-                             >
-                                 <div className={`absolute inset-0 rounded-full animate-ping opacity-75 ${isPositive ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
-                             </div>
-                         )}
+                        {/* LIENZO DEL GRÁFICO (LIGHTWEIGHT CHARTS) */}
+                        <div className="relative flex-1 w-full h-full bg-slate-950/20" ref={chartContainerRef}>
+                             {/* El gráfico se inyecta aquí */}
+                        </div>
+
+                        {/* ESTADÍSTICAS FLOTANTES EN EL GRÁFICO */}
+                        <div className="absolute top-12 left-4 z-20 pointer-events-none">
+                            <div className="flex flex-col gap-1">
+                                <div className="text-xs font-bold text-slate-300">Volumen (24h)</div>
+                                <div className="text-lg font-mono text-white">{parseFloat(volume).toLocaleString()} BTC</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 

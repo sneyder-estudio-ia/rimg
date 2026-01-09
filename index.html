@@ -14,7 +14,8 @@
     "vite": "https://esm.sh/vite@^7.3.1",
     "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
     "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.45.0",
-    "crypto-js": "https://esm.sh/crypto-js@4.2.0"
+    "crypto-js": "https://esm.sh/crypto-js@4.2.0",
+    "lightweight-charts": "https://esm.sh/lightweight-charts@4.1.1"
   }
 }
 </script>
@@ -48,6 +49,27 @@
   @keyframes scanline {
     0% { bottom: 100%; }
     100% { bottom: -100px; }
+  }
+
+  /* 3D Chart Effects */
+  .chart-3d-wrapper {
+    perspective: 1000px;
+    overflow: visible !important;
+  }
+  .chart-3d-active {
+    transform: rotateX(25deg) rotateY(0deg) scale(0.95);
+    box-shadow: 0 50px 60px -12px rgba(0, 0, 0, 0.6), 0 0 40px rgba(6, 182, 212, 0.2);
+    transform-style: preserve-3d;
+    transition: transform 0.8s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.8s ease;
+    border: 1px solid rgba(6, 182, 212, 0.3);
+  }
+  .chart-3d-active::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(180deg, rgba(6, 182, 212, 0.05) 0%, rgba(0,0,0,0) 100%);
+    pointer-events: none;
+    transform: translateZ(20px);
   }
 </style>
 </head>
