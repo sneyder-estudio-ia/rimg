@@ -4,7 +4,6 @@ import { EvaCore } from './src/modulos/eva/EvaCore';
 import { NeuralNetworkView } from './src/modulos/red-neuronal/NeuralNetworkView';
 import { ConfigurationView } from './src/modulos/configuracion/ConfigurationView';
 import { AssetManagerView } from './src/modulos/activos/AssetManagerView';
-import { HolaMundoView } from './src/modulos/hola-mundo/HolaMundoView';
 import { Icons } from './src/components/Icons';
 import { BinanceConfig, AssetConfig, View } from './src/types';
 
@@ -79,8 +78,6 @@ export default function App() {
             onSaveConfig={handleSaveAssets}
           />
         );
-      case 'HOLA_MUNDO':
-          return <HolaMundoView />;
       default:
         return <EvaCore />;
     }
@@ -108,23 +105,16 @@ export default function App() {
       
       {/* SIDEBAR COMPACTO */}
       <aside className="w-20 border-r border-slate-800/60 bg-slate-950/50 flex flex-col items-center py-6 relative z-20 hidden md:flex">
-        <div className="mb-8">
-            <div className="relative w-10 h-10 bg-gradient-to-tr from-blue-600 to-cyan-400 rounded-lg flex items-center justify-center shadow-lg shadow-blue-500/20">
-              <Icons.Bot />
-              <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full border-2 border-slate-950 animate-pulse"></div>
-            </div>
-        </div>
-
+        
+        {/* NAV SECTION START - Logo removed */}
         <nav className="flex-1 w-full flex flex-col items-center gap-4">
           <NavItem view="DASHBOARD" icon={Icons.Activity} label="Panel de Control" />
           <NavItem view="EVA_BRAIN" icon={Icons.Brain} label="Red Neuronal" />
           <NavItem view="ASSETS" icon={Icons.Coins} label="Gestor de Activos" />
           <NavItem view="SETTINGS" icon={Icons.Settings} label="Configuración" />
-          <div className="w-8 h-px bg-slate-800 my-2"></div>
-          <NavItem view="HOLA_MUNDO" icon={Icons.Globe} label="Hola Mundo" />
         </nav>
 
-        <div className="mt-auto">
+        <div className="mt-auto mb-4">
            <div className={`w-3 h-3 rounded-full ${dbConnected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]'}`} title={dbConnected ? "DB Online" : "DB Offline"}></div>
         </div>
       </aside>
@@ -136,13 +126,12 @@ export default function App() {
         
         {/* Header Mobile (Visible only on small screens) */}
         <div className="md:hidden p-4 border-b border-slate-800 flex justify-between items-center bg-slate-950">
-           <div className="flex items-center gap-2">
-              <Icons.Bot />
-              <span className="font-bold text-white">EVA v10.5</span>
+           <div className="flex items-center gap-3">
+              <div className="transform scale-110"><Icons.Binance /></div>
+              <span className="font-bold text-white tracking-wide">EVA v10.5</span>
            </div>
            <div className="flex gap-2">
              <button onClick={() => setCurrentView('DASHBOARD')} className={`p-2 rounded ${currentView === 'DASHBOARD' ? 'bg-blue-600/20 text-blue-400' : 'text-slate-400'}`}><Icons.Activity /></button>
-             <button onClick={() => setCurrentView('HOLA_MUNDO')} className={`p-2 rounded ${currentView === 'HOLA_MUNDO' ? 'bg-blue-600/20 text-blue-400' : 'text-slate-400'}`}><Icons.Globe /></button>
            </div>
         </div>
 
