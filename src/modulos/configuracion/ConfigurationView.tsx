@@ -1,5 +1,5 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../../../supabaseClient';
 import { BinanceConfig, StrategyType } from '../../types';
 import { Icons } from '../../components/Icons';
 
@@ -34,6 +34,70 @@ export const ConfigurationView = ({
     const [validationError, setValidationError] = useState<string | null>(null);
     const [showResetModal, setShowResetModal] = useState(false);
 
+    // --- ESTADOS PARA GESTIÓN DE IP ---
+    const [generatedIp, setGeneratedIp] = useState<string>('');
+    const [ipLoading, setIpLoading] = useState(false);
+    const [ipCopied, setIpCopied] = useState(false);
+
+    // Cargar IP guardada si existe al iniciar
+    useEffect(() => {
+        const fetchSavedIp = async () => {
+            if (config.email && dbConnected) {
+                const { data } = await supabase
+                    .from('eva_access_nodes')
+                    .select('ip_address')
+                    .eq('email', config.email)
+                    .order('created_at', { ascending: false })
+                    .limit(1);
+                
+                if (data && data.length > 0) {
+                    setGeneratedIp(data[0].ip_address);
+                }
+            }
+        };
+        fetchSavedIp();
+    }, [config.email, dbConnected]);
+
+    const handleGenerateIp = async () => {
+        if (!config.email) {
+            setValidationError("INGRESE UN EMAIL ANTES DE GENERAR LA IP");
+            return;
+        }
+
+        setIpLoading(true);
+        try {
+            // 1. Obtener IP pública real del cliente
+            const response = await fetch('https://api.ipify.org?format=json');
+            const data = await response.json();
+            const currentIp = data.ip;
+
+            // 2. Guardar en Supabase
+            const { error } = await supabase
+                .from('eva_access_nodes')
+                .insert([
+                    { email: config.email, ip_address: currentIp, label: 'EVA_WEB_NODE' }
+                ]);
+
+            if (error) throw error;
+
+            setGeneratedIp(currentIp);
+            setValidationError(null);
+        } catch (e) {
+            console.error("Error IP:", e);
+            setValidationError("ERROR AL GENERAR IP. VERIFIQUE CONEXIÓN.");
+        } finally {
+            setIpLoading(false);
+        }
+    };
+
+    const copyIpToClipboard = () => {
+        if (generatedIp) {
+            navigator.clipboard.writeText(generatedIp);
+            setIpCopied(true);
+            setTimeout(() => setIpCopied(false), 2000);
+        }
+    };
+
     const handleSaveClick = async () => {
         if (!config.email || config.email.trim() === '') {
             setValidationError("El correo electrónico es OBLIGATORIO para recuperación.");
@@ -50,7 +114,7 @@ export const ConfigurationView = ({
     const handleFactoryReset = () => {
         setConfig(FACTORY_DEFAULTS);
         setShowResetModal(false);
-        setSaved(true); // Usamos el estado saved para mostrar feedback visual verde momentáneo
+        setSaved(true); 
         setTimeout(() => setSaved(false), 2000);
     };
 
@@ -208,10 +272,10 @@ export const ConfigurationView = ({
                     {/* SECTION 0: IDENTITY (MANDATORY) */}
                     <div className="md:col-span-2 space-y-6">
                         <div className="flex items-center gap-2 text-emerald-400 mb-2 border-b border-slate-800 pb-2">
-                            <Icons.User /> <h3 className="font-bold tracking-wider">IDENTIDAD DEL OPERADOR</h3>
+                            <Icons.User /> <h3 className="font-bold tracking-wider">IDENTIDAD Y NODO DE ACCESO</h3>
                         </div>
                         
-                        <div className="bg-slate-900/50 p-6 rounded-xl border border-slate-800 space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-900/50 p-6 rounded-xl border border-slate-800">
                             <div>
                                 <label className="block text-xs font-bold text-slate-400 mb-2 uppercase flex justify-between">
                                     <span>Correo de Recuperación</span>
@@ -233,7 +297,44 @@ export const ConfigurationView = ({
                                     )}
                                 </div>
                                 <p className="text-[10px] text-slate-500 mt-2">
-                                    * Este correo es el único método para recuperar el acceso y la configuración de sus estrategias en caso de pérdida de sesión.
+                                    * Este correo vincula sus IPs generadas y configuraciones.
+                                </p>
+                            </div>
+
+                            {/* --- GENERADOR DE IP --- */}
+                            <div className="space-y-2">
+                                <label className="block text-xs font-bold text-slate-400 mb-2 uppercase flex items-center justify-between">
+                                    <span>IP DE ENLACE BINANCE</span>
+                                    {generatedIp && <span className="text-emerald-500 text-[10px]">● ACTIVA</span>}
+                                </label>
+                                <div className="flex gap-2">
+                                    <div className="relative flex-1">
+                                        <input 
+                                            type="text" 
+                                            readOnly 
+                                            value={generatedIp || 'SIN NODO ASIGNADO'}
+                                            className="w-full bg-black/50 border border-slate-700 rounded-lg p-3 text-sm font-mono text-cyan-400 text-center tracking-widest outline-none"
+                                        />
+                                        {generatedIp && (
+                                            <button 
+                                                onClick={copyIpToClipboard}
+                                                className="absolute right-2 top-2 p-1.5 hover:bg-slate-700 rounded text-slate-400 hover:text-white transition-colors"
+                                                title="Copiar IP"
+                                            >
+                                                {ipCopied ? <span className="text-emerald-500 text-xs font-bold">COPIADO</span> : <Icons.Save />} 
+                                            </button>
+                                        )}
+                                    </div>
+                                    <button 
+                                        onClick={handleGenerateIp}
+                                        disabled={ipLoading || !config.email}
+                                        className={`px-4 rounded-lg font-bold text-xs uppercase tracking-wide transition-all border ${ipLoading ? 'bg-slate-800 text-slate-500' : 'bg-cyan-900/20 border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/20 shadow-[0_0_15px_rgba(6,182,212,0.2)]'}`}
+                                    >
+                                        {ipLoading ? '...' : generatedIp ? 'ACTUALIZAR' : 'CREAR IP'}
+                                    </button>
+                                </div>
+                                <p className="text-[10px] text-slate-500 leading-tight">
+                                    Esta es su IP pública actual. Cópiela y péguela en Binance bajo "Restringir acceso a IP confiables" para habilitar el trading.
                                 </p>
                             </div>
                         </div>

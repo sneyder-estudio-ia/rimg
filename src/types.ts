@@ -51,3 +51,11 @@ export interface NeuralMemory {
     confidence_level: number;
     created_at: string;
 }
+
+export interface AccessNode {
+    id: string;
+    email: string;
+    ip_address: string;
+    label: string;
+    created_at: string;
+}
