@@ -32,6 +32,10 @@ export default function App() {
   const [currentView, setCurrentView] = useState<View>('DASHBOARD');
   const [dbConnected, setDbConnected] = useState(false);
   
+  // --- ESTADO DE ALERTA DE FONDOS ---
+  const [showLowFundsAlert, setShowLowFundsAlert] = useState(false);
+  const [totalLiquidityDetected, setTotalLiquidityDetected] = useState(0);
+
   // --- SISTEMA DE LOGGING CENTRALIZADO (NÚCLEO OMNISCIENTE) ---
   const [systemLogs, setSystemLogs] = useState<string[]>([
       "EVA_SYS_INIT: Núcleo central inicializado.",
@@ -84,10 +88,26 @@ export default function App() {
     try {
         const data = await getAccountInfo(config.apiKey, config.apiSecret);
         if (data && data.balances) {
-            // Filtramos solo los que tienen saldo para optimizar memoria, pero guardamos todo si es necesario
-            // La API devuelve TODO, filtramos en la vista o aquí. Guardamos crudo para flexibilidad.
             setAccountBalance(data.balances);
             addSystemLog("WALLET_SYNC: Bóveda sincronizada con Binance Mainnet.", 'SYS');
+
+            // --- DETECCIÓN DE FONDOS (LÓGICA CRÍTICA) ---
+            const usdt = data.balances.find((b: any) => b.asset === 'USDT');
+            const fdusd = data.balances.find((b: any) => b.asset === 'FDUSD');
+            
+            const totalUSDT = usdt ? parseFloat(usdt.free) + parseFloat(usdt.locked) : 0;
+            const totalFDUSD = fdusd ? parseFloat(fdusd.free) + parseFloat(fdusd.locked) : 0;
+            const totalLiquidity = totalUSDT + totalFDUSD;
+
+            setTotalLiquidityDetected(totalLiquidity);
+
+            // Si hay conexión correcta PERO menos de 5 USD, activar alerta
+            if (totalLiquidity < 5) {
+                setShowLowFundsAlert(true);
+                addSystemLog(`CRITICAL: Liquidez insuficiente (${totalLiquidity.toFixed(2)} USD). Alerta activada.`, 'WARN');
+            } else {
+                setShowLowFundsAlert(false);
+            }
         }
     } catch (error: any) {
         console.error(error);
@@ -111,10 +131,13 @@ export default function App() {
 
   // Trigger de actualización de billetera al entrar en vistas relevantes
   useEffect(() => {
-      if (currentView === 'WALLET' || currentView === 'ASSETS') {
-          fetchWalletData();
+      if (currentView === 'WALLET' || currentView === 'ASSETS' || currentView === 'DASHBOARD') {
+          // Intentamos sincronizar si hay keys configuradas
+          if (config.apiKey && config.apiSecret) {
+              fetchWalletData();
+          }
       }
-  }, [currentView]);
+  }, [currentView, config.apiKey]);
 
   // Verificación de conexión a Supabase
   useEffect(() => {
@@ -235,6 +258,48 @@ export default function App() {
 
   return (
     <>
+      {/* ALERTA CRÍTICA DE FONDOS INSUFICIENTES */}
+      {showLowFundsAlert && (
+          <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in duration-300">
+              <div className="bg-rose-950/20 border-2 border-rose-600 rounded-2xl max-w-lg w-full p-8 shadow-[0_0_100px_rgba(225,29,72,0.2)] relative overflow-hidden">
+                  <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/diagmonds-light.png')] opacity-10 pointer-events-none"></div>
+                  
+                  <div className="relative z-10 text-center">
+                      <div className="w-20 h-20 bg-rose-600/20 rounded-full flex items-center justify-center mx-auto mb-6 border border-rose-500 animate-pulse">
+                          <div className="transform scale-150 text-rose-500"><Icons.Alert /></div>
+                      </div>
+                      <h2 className="text-3xl font-black text-white mb-2 tracking-tighter">ERROR DE CAPITAL</h2>
+                      <div className="h-1 w-24 bg-rose-600 mx-auto mb-6 rounded-full"></div>
+                      
+                      <p className="text-slate-300 mb-2 font-mono text-sm">EVA HA DETECTADO UNA LIQUIDEZ CRÍTICA DE:</p>
+                      <div className="text-4xl font-mono font-bold text-rose-500 mb-6">${totalLiquidityDetected.toFixed(2)} USDT</div>
+                      
+                      <p className="text-slate-400 text-sm mb-8 leading-relaxed border border-rose-900/50 bg-rose-900/10 p-4 rounded-lg">
+                          El protocolo requiere un mínimo de <strong>10 USDT</strong> para ejecutar operaciones en Binance. Por favor deposite fondos o convierta activos.
+                      </p>
+
+                      <div className="flex flex-col gap-3">
+                        <button 
+                            onClick={() => window.open('https://www.binance.com/es/my/wallet/account/main', '_blank')}
+                            className="w-full py-4 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-lg tracking-widest text-sm shadow-lg shadow-rose-900/40 transition-all flex items-center justify-center gap-2"
+                        >
+                            <Icons.Wallet /> DEPOSITAR EN BINANCE
+                        </button>
+                        <button 
+                            onClick={() => {
+                                // Opción para cerrar la alerta temporalmente si el usuario insiste (ej: para ver gráficos)
+                                setShowLowFundsAlert(false);
+                            }}
+                            className="w-full py-3 bg-transparent border border-slate-700 text-slate-500 hover:text-slate-300 font-bold rounded-lg text-xs"
+                        >
+                            IGNORAR Y CONTINUAR (SOLO LECTURA)
+                        </button>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
+
       {/* RENDERIZADO CONDICIONAL DE LA INTRO */}
       {showIntro ? (
         <IntroAnimation onComplete={() => setShowIntro(false)} />

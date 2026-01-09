@@ -15,6 +15,9 @@ interface EvaCoreProps {
 }
 
 export const EvaCore = ({ config, logs, onLog }: EvaCoreProps) => {
+  // --- ESTADO DE ACTIVO (MONEDA) ---
+  const [activeSymbol, setActiveSymbol] = useState('BTCUSDT');
+
   // --- ESTADO DE DATOS DE MERCADO REALES ---
   const [currentPrice, setCurrentPrice] = useState(0);
   const [priceChange, setPriceChange] = useState(0);
@@ -69,7 +72,7 @@ export const EvaCore = ({ config, logs, onLog }: EvaCoreProps) => {
 
       setExecuting(false);
       setIsSystemActive(true);
-      onLog("SYSTEM_START: Motor de Trading ONLINE. Escaneando mercado...", 'EXEC');
+      onLog(`SYSTEM_START: Motor de Trading ONLINE en ${activeSymbol}. Escaneando mercado...`, 'EXEC');
   };
 
   // --- 2. BUCLE DE TRADING (HEARTBEAT) ---
@@ -96,41 +99,40 @@ export const EvaCore = ({ config, logs, onLog }: EvaCoreProps) => {
                 
                 // ESTRATEGIA: RSI SOBREVENTA (COMPRA)
                 if (currentRSI < 30) {
-                    onLog(`SIGNAL: RSI ${currentRSI.toFixed(2)} (Sobreventa). Iniciando COMPRA.`, 'EXEC');
+                    onLog(`SIGNAL: RSI ${currentRSI.toFixed(2)} (Sobreventa). Iniciando COMPRA en ${activeSymbol}.`, 'EXEC');
                     await performAutoTrade('BUY');
                 }
                 
                 // ESTRATEGIA: RSI SOBRECOMPRA (VENTA)
                 else if (currentRSI > 70) {
-                    onLog(`SIGNAL: RSI ${currentRSI.toFixed(2)} (Sobrecompra). Iniciando VENTA.`, 'EXEC');
+                    onLog(`SIGNAL: RSI ${currentRSI.toFixed(2)} (Sobrecompra). Iniciando VENTA en ${activeSymbol}.`, 'EXEC');
                     await performAutoTrade('SELL');
                 }
             } else if (Math.random() > 0.9) {
                 // Log de latido ocasional
-                onLog(`SCAN: BTC/USDT @ ${lastClose} | RSI: ${currentRSI.toFixed(2)}`, 'INFO');
+                onLog(`SCAN: ${activeSymbol} @ ${lastClose} | RSI: ${currentRSI.toFixed(2)}`, 'INFO');
             }
 
         }, 3000);
     }
 
     return () => clearInterval(heartbeatInterval);
-  }, [isSystemActive, config.autonomousMode, executing]);
+  }, [isSystemActive, config.autonomousMode, executing, activeSymbol]);
 
   // Función de ejecución automática
   const performAutoTrade = async (side: 'BUY' | 'SELL') => {
       setExecuting(true);
       try {
-          // Cantidad segura fija para evitar errores de cálculo en demo real (0.0002 BTC ~= $12 USD)
-          // En producción, esto debe calcularse dinámicamente según el saldo disponible.
-          const quantity = 0.0002; 
+          // Cantidad segura fija para evitar errores de cálculo en demo real
+          const quantity = activeSymbol === 'BTCUSDT' ? 0.0002 : 10; // Ejemplo simple
           
-          onLog(`AUTO_EXEC: Enviando orden ${side} MARKET (${quantity} BTC)...`, 'EXEC');
+          onLog(`AUTO_EXEC: Enviando orden ${side} MARKET (${quantity} ${activeSymbol.replace('USDT','')})...`, 'EXEC');
           
-          const result = await executeOrder(config.apiKey, config.apiSecret, 'BTCUSDT', side, quantity);
+          const result = await executeOrder(config.apiKey, config.apiSecret, activeSymbol, side, quantity);
           
           lastTradeTimeRef.current = Date.now();
           setLastOrder(`AUTO-${result.orderId}`);
-          onLog(`SUCCESS: Orden ${result.orderId} completada. Precio: ${result.cummulativeQuoteQty}`, 'SYS');
+          onLog(`SUCCESS: Orden ${result.orderId} completada. Costo: ${result.cummulativeQuoteQty}`, 'SYS');
       } catch (e: any) {
           onLog(`FAIL: Error en orden automática: ${e.message}`, 'WARN');
       } finally {
@@ -188,10 +190,10 @@ export const EvaCore = ({ config, logs, onLog }: EvaCoreProps) => {
         chart.timeScale().fitContent();
     };
 
-    // Cargar historial real
+    // Cargar historial real dinámico
     const loadData = async () => {
         try {
-            const rawCandles = await getCandles('BTCUSDT', '15m', 100);
+            const rawCandles = await getCandles(activeSymbol, '15m', 100);
             if (isCleanedUp) return;
             
             const formatted = rawCandles.map(c => ({
@@ -208,10 +210,10 @@ export const EvaCore = ({ config, logs, onLog }: EvaCoreProps) => {
             
             if (formatted.length > 0) {
                 setCurrentPrice(formatted[formatted.length-1].close);
-                onLog("CHART_SYNC: Datos históricos cargados.", 'INFO');
+                onLog(`CHART_SYNC: Datos históricos de ${activeSymbol} cargados.`, 'INFO');
             }
         } catch (e) {
-            if(!isCleanedUp) onLog("ERROR: Fallo al cargar historial de velas.", 'WARN');
+            if(!isCleanedUp) onLog(`ERROR: Fallo al cargar velas de ${activeSymbol}.`, 'WARN');
         }
     };
 
@@ -233,12 +235,12 @@ export const EvaCore = ({ config, logs, onLog }: EvaCoreProps) => {
             chartApiRef.current = null;
         }
     };
-  }, [chartType]);
+  }, [chartType, activeSymbol]); // <--- Dependencia añadida: activeSymbol
 
   // --- 4. CONEXIÓN WEBSOCKETS (TICKER Y PROFUNDIDAD) ---
   useEffect(() => {
     // Ticker para precio y actualización de velas
-    const tickerWs = subscribeToTicker('BTCUSDT', (data) => {
+    const tickerWs = subscribeToTicker(activeSymbol, (data) => {
         setCurrentPrice(data.price);
         setPriceChange(data.change24h);
         setVolume(data.volume);
@@ -259,13 +261,13 @@ export const EvaCore = ({ config, logs, onLog }: EvaCoreProps) => {
     });
 
     // Depth para Libro de Órdenes
-    const depthWs = subscribeToDepth('BTCUSDT', (data) => {
+    const depthWs = subscribeToDepth(activeSymbol, (data) => {
         // Procesamos solo los top 14 para visualización
         const processBook = (list: any[]) => list.slice(0, 14).map(item => ({
             price: item.price,
             size: item.size,
             total: item.price * item.size,
-            relativeSize: Math.min((item.size * item.price / 50000) * 100, 100) // Barra relativa visual
+            relativeSize: Math.min((item.size * item.price / (currentPrice * 0.5)) * 100, 100) // Dinámico según precio
         }));
 
         setAsks(processBook(data.asks));
@@ -276,7 +278,7 @@ export const EvaCore = ({ config, logs, onLog }: EvaCoreProps) => {
         tickerWs.close();
         depthWs.close();
     };
-  }, []);
+  }, [activeSymbol]); // <--- Dependencia añadida: activeSymbol
 
   // --- 5. EJECUCIÓN MANUAL ---
   const handleManualTrade = async (side: 'BUY' | 'SELL') => {
@@ -286,9 +288,9 @@ export const EvaCore = ({ config, logs, onLog }: EvaCoreProps) => {
       }
       setExecuting(true);
       try {
-          const qty = 0.0002; // Cantidad fija segura para UI manual
-          onLog(`MANUAL_ORDER: Enviando ${side} ${qty} BTC...`, 'EXEC');
-          const res = await executeOrder(config.apiKey, config.apiSecret, 'BTCUSDT', side, qty);
+          const qty = activeSymbol === 'BTCUSDT' ? 0.0002 : 10; // Simple switch para demo
+          onLog(`MANUAL_ORDER: Enviando ${side} ${qty} en ${activeSymbol}...`, 'EXEC');
+          const res = await executeOrder(config.apiKey, config.apiSecret, activeSymbol, side, qty);
           setLastOrder(`MAN-${res.orderId}`);
           onLog(`SUCCESS: Orden manual ejecutada.`, 'SYS');
       } catch (e: any) {
@@ -305,6 +307,14 @@ export const EvaCore = ({ config, logs, onLog }: EvaCoreProps) => {
     }
   }, [logs]);
 
+  // Helper para formatear par (BTCUSDT -> BTC / USDT)
+  const formatPair = (symbol: string) => {
+      if (symbol.endsWith('USDT')) return `${symbol.replace('USDT', '')} / USDT`;
+      if (symbol.endsWith('BTC')) return `${symbol.replace('BTC', '')} / BTC`;
+      if (symbol.endsWith('ETH')) return `${symbol.replace('ETH', '')} / ETH`;
+      return symbol;
+  };
+
   const isPositive = priceChange >= 0;
 
   return (
@@ -317,8 +327,10 @@ export const EvaCore = ({ config, logs, onLog }: EvaCoreProps) => {
             <div className="flex items-center gap-4">
                 <div className="bg-slate-900 border border-slate-700 p-2 rounded-lg text-white"><Icons.Binance /></div>
                 <div>
-                    <h1 className="text-xl font-bold text-white tracking-wider flex items-center gap-2">
-                        BTC / USDT <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/30">REAL TIME</span>
+                    {/* PAR DE DIVISAS DINÁMICO */}
+                    <h1 className="text-xl font-bold text-white tracking-wider flex items-center gap-2 uppercase">
+                        {formatPair(activeSymbol)} 
+                        <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/30">REAL TIME</span>
                     </h1>
                     <div className="flex gap-3 text-xs mt-1">
                         <span className="text-slate-500">Vol 24h: <span className="text-slate-300">{parseFloat(volume).toLocaleString()}</span></span>
@@ -327,6 +339,19 @@ export const EvaCore = ({ config, logs, onLog }: EvaCoreProps) => {
                 </div>
             </div>
             <div className="flex gap-6 items-center text-right">
+                 {/* Selector de Moneda Rápido (Oculto en móvil, visible en Desktop) */}
+                 <div className="hidden lg:flex gap-2 mr-4">
+                    {['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'TRXUSDT'].map(sym => (
+                        <button 
+                            key={sym} 
+                            onClick={() => setActiveSymbol(sym)}
+                            className={`px-2 py-1 text-[10px] rounded border ${activeSymbol === sym ? 'bg-blue-600 border-blue-500 text-white' : 'border-slate-800 text-slate-500 hover:text-white'}`}
+                        >
+                            {sym.replace('USDT', '')}
+                        </button>
+                    ))}
+                 </div>
+
                  <div className="hidden md:block">
                     <div className="text-[10px] text-slate-500 uppercase">RSI (14)</div>
                     <div className={`text-xl font-bold ${liveRsi < 30 ? 'text-emerald-400' : liveRsi > 70 ? 'text-rose-400' : 'text-blue-400'}`}>
@@ -388,7 +413,7 @@ export const EvaCore = ({ config, logs, onLog }: EvaCoreProps) => {
                     {/* OPERATIVA MANUAL */}
                     <div className={`bg-slate-900/60 border border-slate-800 rounded-xl p-4 flex flex-col justify-between ${!isSystemActive ? 'opacity-50 pointer-events-none' : ''}`}>
                          <div className="flex justify-between text-xs font-bold text-slate-400 uppercase mb-2">
-                            <span>Trading Manual</span>
+                            <span>Trading Manual ({activeSymbol})</span>
                             <span>{config.leverage}x Lev</span>
                         </div>
                         <div className="flex gap-2">
@@ -403,7 +428,7 @@ export const EvaCore = ({ config, logs, onLog }: EvaCoreProps) => {
             <div className="flex-1 flex flex-col gap-4 min-w-[300px] max-w-md">
                 {/* ORDER BOOK */}
                 <div className="flex-[2] bg-slate-900/40 border border-slate-800 rounded-xl overflow-hidden flex flex-col min-h-[400px]">
-                    <div className="bg-slate-900/80 p-2 border-b border-slate-800 text-center text-xs font-bold text-slate-400">LIBRO DE ÓRDENES</div>
+                    <div className="bg-slate-900/80 p-2 border-b border-slate-800 text-center text-xs font-bold text-slate-400">LIBRO DE ÓRDENES ({activeSymbol.replace('USDT','')})</div>
                     <div className="flex-1 flex flex-col text-[10px] font-mono relative">
                         {/* VENTAS (ROJO) */}
                         <div className="flex-1 flex flex-col justify-end overflow-hidden pb-1">
