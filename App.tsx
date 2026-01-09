@@ -101,12 +101,11 @@ export default function App() {
 
             setTotalLiquidityDetected(totalLiquidity);
 
-            // Si hay conexión correcta PERO menos de 5 USD, activar alerta
-            if (totalLiquidity < 5) {
+            // Si hay conexión correcta PERO menos de 5 USD, activar alerta (SOLO SI NO ESTAMOS EN DASHBOARD)
+            // Si estamos en dashboard, dejamos que EvaCore maneje el bloqueo al intentar iniciar.
+            if (totalLiquidity < 5 && currentView === 'WALLET') {
                 setShowLowFundsAlert(true);
-                addSystemLog(`CRITICAL: Liquidez insuficiente (${totalLiquidity.toFixed(2)} USD). Alerta activada.`, 'WARN');
-            } else {
-                setShowLowFundsAlert(false);
+                addSystemLog(`CRITICAL: Liquidez insuficiente (${totalLiquidity.toFixed(2)} USD).`, 'WARN');
             }
         }
     } catch (error: any) {
@@ -173,7 +172,8 @@ export default function App() {
             <EvaCore 
                 config={config} 
                 logs={systemLogs} 
-                onLog={addSystemLog} 
+                onLog={addSystemLog}
+                totalLiquidity={totalLiquidityDetected} // <--- SE PASA LA LIQUIDEZ AL NÚCLEO
             />
         );
       case 'EVA_BRAIN':
@@ -219,7 +219,7 @@ export default function App() {
       case 'HOLA_MUNDO':
         return <HolaMundoView />;
       default:
-        return <EvaCore config={config} logs={systemLogs} onLog={addSystemLog} />;
+        return <EvaCore config={config} logs={systemLogs} onLog={addSystemLog} totalLiquidity={totalLiquidityDetected} />;
     }
   };
 
@@ -258,7 +258,7 @@ export default function App() {
 
   return (
     <>
-      {/* ALERTA CRÍTICA DE FONDOS INSUFICIENTES */}
+      {/* ALERTA CRÍTICA DE FONDOS INSUFICIENTES (GLOBAL) */}
       {showLowFundsAlert && (
           <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in duration-300">
               <div className="bg-rose-950/20 border-2 border-rose-600 rounded-2xl max-w-lg w-full p-8 shadow-[0_0_100px_rgba(225,29,72,0.2)] relative overflow-hidden">
@@ -287,7 +287,6 @@ export default function App() {
                         </button>
                         <button 
                             onClick={() => {
-                                // Opción para cerrar la alerta temporalmente si el usuario insiste (ej: para ver gráficos)
                                 setShowLowFundsAlert(false);
                             }}
                             className="w-full py-3 bg-transparent border border-slate-700 text-slate-500 hover:text-slate-300 font-bold rounded-lg text-xs"

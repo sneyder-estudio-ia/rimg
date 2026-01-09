@@ -12,9 +12,10 @@ interface EvaCoreProps {
     config: BinanceConfig;
     logs: string[];
     onLog: (msg: string, type?: 'INFO' | 'WARN' | 'EXEC' | 'SYS') => void;
+    totalLiquidity?: number; // Nueva Prop para validar fondos
 }
 
-export const EvaCore = ({ config, logs, onLog }: EvaCoreProps) => {
+export const EvaCore = ({ config, logs, onLog, totalLiquidity = 0 }: EvaCoreProps) => {
   // --- ESTADO DE ACTIVO (MONEDA) ---
   const [activeSymbol, setActiveSymbol] = useState('BTCUSDT');
 
@@ -37,6 +38,7 @@ export const EvaCore = ({ config, logs, onLog }: EvaCoreProps) => {
   const [systemError, setSystemError] = useState<string | null>(null);
   const [executing, setExecuting] = useState(false); // Bloqueo durante llamadas API
   const [lastOrder, setLastOrder] = useState<string | null>(null);
+  const [showNoFundsModal, setShowNoFundsModal] = useState(false); // MODAL DE SIN FONDOS
   
   // --- ESTADO DEL ORDER BOOK (L2 DATA) ---
   const [asks, setAsks] = useState<{price: number, size: number, total: number, relativeSize: number}[]>([]);
@@ -67,6 +69,15 @@ export const EvaCore = ({ config, logs, onLog }: EvaCoreProps) => {
           setSystemError(err);
           onLog(err, 'WARN');
           setExecuting(false);
+          return;
+      }
+
+      // --- NUEVA VALIDACIÓN: VERIFICAR FONDOS ---
+      // Verificamos si la liquidez es menor a un umbral operativo mínimo (ej. 5 USDT)
+      if (totalLiquidity < 5) {
+          setExecuting(false);
+          setShowNoFundsModal(true); // Activar ventana flotante
+          onLog("CRITICAL: Intento de inicio abortado. Liquidez insuficiente en Binance.", 'WARN');
           return;
       }
 
@@ -235,7 +246,7 @@ export const EvaCore = ({ config, logs, onLog }: EvaCoreProps) => {
             chartApiRef.current = null;
         }
     };
-  }, [chartType, activeSymbol]); // <--- Dependencia añadida: activeSymbol
+  }, [chartType, activeSymbol]); 
 
   // --- 4. CONEXIÓN WEBSOCKETS (TICKER Y PROFUNDIDAD) ---
   useEffect(() => {
@@ -278,7 +289,7 @@ export const EvaCore = ({ config, logs, onLog }: EvaCoreProps) => {
         tickerWs.close();
         depthWs.close();
     };
-  }, [activeSymbol]); // <--- Dependencia añadida: activeSymbol
+  }, [activeSymbol]); 
 
   // --- 5. EJECUCIÓN MANUAL ---
   const handleManualTrade = async (side: 'BUY' | 'SELL') => {
@@ -321,6 +332,42 @@ export const EvaCore = ({ config, logs, onLog }: EvaCoreProps) => {
     <div className="flex flex-col h-full bg-[#050b14] font-mono text-slate-300 relative overflow-y-auto custom-scrollbar">
         {/* FONDO TÁCTICO */}
         <div className="absolute inset-0 bg-[linear-gradient(rgba(18,24,38,0.5)_1px,transparent_1px),linear-gradient(90deg,rgba(18,24,38,0.5)_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none min-h-screen"></div>
+
+        {/* --- MODAL DE ERROR DE FONDOS (SOLICITADO) --- */}
+        {showNoFundsModal && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+                <div className="bg-slate-900 border-2 border-rose-600 rounded-xl max-w-sm w-full shadow-[0_0_50px_rgba(225,29,72,0.4)] relative p-6 text-center transform scale-100 animate-in zoom-in-95">
+                    {/* Botón X de Cierre */}
+                    <button 
+                        onClick={() => setShowNoFundsModal(false)}
+                        className="absolute top-3 right-3 text-slate-500 hover:text-white transition-colors"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    </button>
+                    
+                    <div className="w-16 h-16 bg-rose-500/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-rose-500/30">
+                        <span className="text-rose-500 transform scale-150"><Icons.Alert /></span>
+                    </div>
+
+                    <h2 className="text-xl font-black text-white mb-2 uppercase tracking-wide">Acceso Denegado</h2>
+                    <div className="h-1 w-16 bg-rose-600 mx-auto mb-4"></div>
+                    
+                    <p className="text-slate-300 text-sm mb-2">
+                        EVA ha detectado fondos insuficientes en su cuenta de Binance.
+                    </p>
+                    <p className="text-rose-400 text-xs font-mono mb-6 bg-rose-950/30 p-2 rounded border border-rose-900/50">
+                        ERROR: LIQUIDITY_BELOW_THRESHOLD
+                    </p>
+
+                    <button 
+                        onClick={() => setShowNoFundsModal(false)}
+                        className="w-full py-3 bg-rose-700 hover:bg-rose-600 text-white font-bold rounded-lg transition-all shadow-lg shadow-rose-900/20 text-xs tracking-wider"
+                    >
+                        CERRAR ADVERTENCIA
+                    </button>
+                </div>
+            </div>
+        )}
 
         {/* HEADER */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800/60 bg-[#050b14]/90 backdrop-blur z-20 sticky top-0">
