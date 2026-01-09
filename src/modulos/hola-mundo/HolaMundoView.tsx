@@ -26,7 +26,7 @@ const AccordionItem = ({
         <div className={`border rounded-xl transition-all duration-300 overflow-hidden ${isOpen ? 'bg-slate-900/60 border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.1)]' : 'bg-slate-950/50 border-slate-800 hover:border-slate-700'}`}>
             <button 
                 onClick={onClick}
-                className="w-full flex items-center justify-between p-4 md:p-5 text-left outline-none group"
+                className="w-full flex items-center justify-between p-4 active:bg-slate-800/50 transition-colors text-left outline-none group"
             >
                 <div className="flex items-center gap-4">
                     <div className={`p-2 rounded-lg transition-colors ${isOpen ? 'bg-emerald-500/10 text-emerald-400' : 'bg-slate-900 text-slate-500 group-hover:text-slate-300'}`}>
@@ -59,37 +59,43 @@ export const HolaMundoView = () => {
   };
 
   return (
-    <div className="w-full h-full bg-slate-950 relative overflow-y-auto selection:bg-emerald-500/30 custom-scrollbar">
+    <div className="w-full h-full bg-slate-950 relative overflow-y-auto selection:bg-emerald-500/30 custom-scrollbar pb-24 md:pb-0">
       {/* Fondo ambiental */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-slate-950 pointer-events-none fixed"></div>
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-slate-900/40 via-slate-950 to-slate-950 pointer-events-none fixed"></div>
       
-      <div className="relative z-10 max-w-4xl mx-auto p-6 md:p-12 animate-in fade-in duration-700">
+      {/* CONTENIDO CENTRADO Y RESPONSIVO */}
+      <div className="relative z-10 w-full min-h-full flex flex-col items-center">
           
-          {/* ENCABEZADO */}
-          <header className="mb-12 border-b border-slate-800/60 pb-8">
-              <h1 className="text-4xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-slate-100 to-slate-600 tracking-tighter drop-shadow-lg mb-4">
+          {/* SECCIÓN HERO CENTRADA */}
+          <header className="w-full py-16 md:py-24 px-6 flex flex-col items-center justify-center text-center border-b border-slate-800/60 bg-gradient-to-b from-transparent to-slate-950/50">
+              <div className="w-20 h-20 md:w-24 md:h-24 bg-slate-900 rounded-full flex items-center justify-center border border-slate-800 mb-6 shadow-[0_0_30px_rgba(16,185,129,0.1)]">
+                 <div className="transform scale-150 text-emerald-400"><Icons.Globe /></div>
+              </div>
+              
+              <h1 className="text-5xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-slate-600 tracking-tighter drop-shadow-2xl mb-4">
                 HOLA MUNDO
               </h1>
               
-              <div className="flex items-center gap-3 opacity-80">
-                  <div className="w-6 h-[2px] bg-emerald-500"></div>
+              <div className="flex items-center gap-3 opacity-80 bg-slate-900/50 px-4 py-2 rounded-full border border-slate-800">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
                   <span className="text-emerald-400 font-mono text-xs tracking-[0.2em] uppercase font-bold">
-                      MANUAL DE USO & FAQ
+                      SISTEMA OPERATIVO MÓVIL
                   </span>
               </div>
           </header>
 
-          <div className="grid grid-cols-1 gap-12">
+          {/* CONTENEDOR DE MANUAL (Ancho controlado) */}
+          <div className="w-full max-w-3xl px-4 md:px-8 py-8 space-y-12">
             
             {/* SECCIÓN 1: MANUAL DE FUNCIONES */}
-            <section>
-                <h2 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
+            <section className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-100">
+                <h2 className="text-center md:text-left text-lg font-bold text-white mb-6 flex items-center justify-center md:justify-start gap-2">
                     <Icons.Cpu /> MÓDULOS DEL SISTEMA
                 </h2>
                 <div className="flex flex-col gap-4">
                     
                     <AccordionItem 
-                        title="PANEL DE CONTROL (Dashboard)" 
+                        title="PANEL DE CONTROL" 
                         icon={Icons.Activity}
                         isOpen={openSection === 'PANEL'}
                         onClick={() => toggleSection('PANEL')}
@@ -97,28 +103,26 @@ export const HolaMundoView = () => {
                         <p className="mb-3">
                             El centro de comando principal de EVA. Aquí visualizas el mercado en tiempo real mediante conexión WebSocket directa a Binance.
                         </p>
-                        <ul className="list-disc pl-5 space-y-1 marker:text-emerald-500">
-                            <li><strong className="text-white">Gráfico en Vivo:</strong> Visualización de velas y áreas de precio.</li>
-                            <li><strong className="text-white">Libro de Órdenes:</strong> Muestra la profundidad de mercado (Bids vs Asks).</li>
-                            <li><strong className="text-white">Terminal EVA_OS:</strong> Logs del sistema mostrando cada acción interna.</li>
-                            <li><strong className="text-white">Trading Manual:</strong> Botones de ejecución rápida para emergencias.</li>
+                        <ul className="list-disc pl-5 space-y-2 marker:text-emerald-500">
+                            <li><strong className="text-white">Gráfico en Vivo:</strong> Velas japonesas y herramientas técnicas.</li>
+                            <li><strong className="text-white">Libro de Órdenes:</strong> Profundidad de mercado (Bids vs Asks).</li>
+                            <li><strong className="text-white">Terminal EVA_OS:</strong> Logs del sistema en tiempo real.</li>
                         </ul>
                     </AccordionItem>
 
                     <AccordionItem 
-                        title="RED NEURONAL (Corteza)" 
+                        title="RED NEURONAL" 
                         icon={Icons.Brain}
                         isOpen={openSection === 'NEURAL'}
                         onClick={() => toggleSection('NEURAL')}
                     >
                         <p className="mb-3">
-                            El cerebro de la IA. Este módulo procesa datos matemáticos para encontrar patrones invisibles al ojo humano.
+                            El cerebro de la IA. Procesa datos matemáticos para encontrar patrones invisibles.
                         </p>
-                        <ul className="list-disc pl-5 space-y-1 marker:text-purple-500">
-                            <li><strong className="text-white">Visualizador Sináptico:</strong> Representación gráfica del estado de "pensamiento" de EVA.</li>
-                            <li><strong className="text-white">10 Habilidades:</strong> Configura qué lógicas usa el bot (RSI, Ballenas, Volatilidad, etc).</li>
-                            <li><strong className="text-white">Bucle Automático:</strong> Al activarlo, EVA escanea el mercado cada 10 segundos perpetuamente.</li>
-                            <li><strong className="text-white">Memoria Colectiva:</strong> Registra cada decisión en Supabase para aprender de errores pasados.</li>
+                        <ul className="list-disc pl-5 space-y-2 marker:text-purple-500">
+                            <li><strong className="text-white">Visualizador Sináptico:</strong> Estado de "pensamiento" de EVA.</li>
+                            <li><strong className="text-white">Bucle Automático:</strong> Escaneo perpetuo cada 10s.</li>
+                            <li><strong className="text-white">Memoria Colectiva:</strong> Aprendizaje basado en Supabase.</li>
                         </ul>
                     </AccordionItem>
 
@@ -131,10 +135,9 @@ export const HolaMundoView = () => {
                         <p className="mb-3">
                             Controla qué monedas puede operar EVA y con qué riesgo.
                         </p>
-                        <ul className="list-disc pl-5 space-y-1 marker:text-yellow-500">
-                            <li><strong className="text-white">Modo Autónomo (Soberano):</strong> Si se activa, EVA ignora las restricciones y busca oportunidades en cualquier activo con saldo.</li>
-                            <li><strong className="text-white">Matriz Manual:</strong> Permite activar/desactivar monedas específicas (ej. solo operar BTC y ETH).</li>
-                            <li><strong className="text-white">Asignación de Capital:</strong> Define qué porcentaje de tu saldo se usa por operación.</li>
+                        <ul className="list-disc pl-5 space-y-2 marker:text-yellow-500">
+                            <li><strong className="text-white">Modo Soberano:</strong> EVA opera todo activo con saldo positivo.</li>
+                            <li><strong className="text-white">Matriz Manual:</strong> Activa/desactiva monedas específicas.</li>
                         </ul>
                     </AccordionItem>
 
@@ -147,48 +150,34 @@ export const HolaMundoView = () => {
                         <p className="mb-3">
                             Ajustes fundamentales de la cuenta y estrategias.
                         </p>
-                        <ul className="list-disc pl-5 space-y-1 marker:text-blue-500">
-                            <li><strong className="text-white">Credenciales API:</strong> Vinculación segura con Binance (Key + Secret).</li>
-                            <li><strong className="text-white">Selección de Estrategia:</strong> Elige entre Scalping (rápido), Swing (lento) o AI Sentiment.</li>
-                            <li><strong className="text-white">Gestión de Riesgo:</strong> Configura Stop Loss y Take Profit globales.</li>
+                        <ul className="list-disc pl-5 space-y-2 marker:text-blue-500">
+                            <li><strong className="text-white">API Keys:</strong> Vinculación segura con Binance.</li>
+                            <li><strong className="text-white">Estrategia:</strong> Scalping vs Swing.</li>
+                            <li><strong className="text-white">Riesgo:</strong> Stop Loss y Take Profit globales.</li>
                         </ul>
                     </AccordionItem>
 
                 </div>
             </section>
 
-            {/* SECCIÓN 2: PREGUNTAS FRECUENTES */}
-            <section>
-                <h2 className="text-lg font-bold text-white mb-6 flex items-center gap-2 border-t border-slate-800 pt-8">
-                    <Icons.Alert /> PREGUNTAS FRECUENTES (FAQ)
+            {/* SECCIÓN 2: TARJETAS FAQ (Grid responsivo) */}
+            <section className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-200">
+                <h2 className="text-center md:text-left text-lg font-bold text-white mb-6 flex items-center justify-center md:justify-start gap-2 border-t border-slate-800 pt-8">
+                    <Icons.Alert /> FAQ RÁPIDO
                 </h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     
-                    <div className="bg-slate-900/30 border border-slate-800 p-5 rounded-xl hover:bg-slate-900/50 transition-colors">
-                        <h3 className="text-emerald-400 font-bold text-sm mb-2">¿EVA opera mientras duermo?</h3>
+                    <div className="bg-slate-900/40 border border-slate-800 p-6 rounded-xl text-center md:text-left">
+                        <h3 className="text-emerald-400 font-bold text-sm mb-2 flex items-center justify-center md:justify-start gap-2"><Icons.Clock /> ¿Opera durmiendo?</h3>
                         <p className="text-slate-400 text-xs leading-relaxed">
-                            Sí. Si activas el <strong>"Bucle Automático"</strong> en la Red Neuronal o el <strong>"Modo Autónomo"</strong> en Configuración, EVA mantendrá el escaneo perpetuo mientras la pestaña del navegador permanezca abierta (o el servidor desplegado).
+                            Sí. Con el <strong>"Bucle Automático"</strong> activo, EVA mantiene el escaneo perpetuo.
                         </p>
                     </div>
 
-                    <div className="bg-slate-900/30 border border-slate-800 p-5 rounded-xl hover:bg-slate-900/50 transition-colors">
-                        <h3 className="text-emerald-400 font-bold text-sm mb-2">¿Es seguro poner mis API Keys?</h3>
+                    <div className="bg-slate-900/40 border border-slate-800 p-6 rounded-xl text-center md:text-left">
+                        <h3 className="text-emerald-400 font-bold text-sm mb-2 flex items-center justify-center md:justify-start gap-2"><Icons.Shield /> ¿Es seguro?</h3>
                         <p className="text-slate-400 text-xs leading-relaxed">
-                            Absolutamente. Las claves se guardan <strong>localmente en tu navegador</strong> (LocalStorage) y nunca se envían a ningún servidor externo que no sea Binance para ejecutar órdenes. Tú tienes el control total.
-                        </p>
-                    </div>
-
-                    <div className="bg-slate-900/30 border border-slate-800 p-5 rounded-xl hover:bg-slate-900/50 transition-colors">
-                        <h3 className="text-emerald-400 font-bold text-sm mb-2">¿Qué hace el "Modo Soberano"?</h3>
-                        <p className="text-slate-400 text-xs leading-relaxed">
-                            Elimina la necesidad de confirmación humana. EVA detectará una señal de compra y ejecutará la orden de mercado inmediatamente. Úsalo con precaución y una buena gestión de riesgo configurada.
-                        </p>
-                    </div>
-
-                    <div className="bg-slate-900/30 border border-slate-800 p-5 rounded-xl hover:bg-slate-900/50 transition-colors">
-                        <h3 className="text-emerald-400 font-bold text-sm mb-2">¿Para qué sirve Supabase?</h3>
-                        <p className="text-slate-400 text-xs leading-relaxed">
-                            Actúa como la "Memoria a Largo Plazo". EVA guarda allí cada decisión que toma. Esto permite auditar el rendimiento pasado y, en futuras versiones, permitirá que la IA aprenda de sus propios errores (Reinforcement Learning).
+                            Tus claves API se guardan <strong>localmente</strong>. Tú tienes el control total.
                         </p>
                     </div>
 
@@ -198,9 +187,9 @@ export const HolaMundoView = () => {
           </div>
 
           {/* Footer del Documento */}
-          <div className="mt-12 pt-8 border-t border-slate-800 text-center">
-              <p className="text-slate-600 text-xs font-mono">
-                  EVA PROTOCOL v10.5 DOCUMENTATION // SECURE CHANNEL
+          <div className="mt-auto py-8 w-full text-center border-t border-slate-800/50 bg-slate-950">
+              <p className="text-slate-600 text-[10px] font-mono uppercase tracking-widest">
+                  EVA PROTOCOL v10.5 | MOBILE EDITION
               </p>
           </div>
 

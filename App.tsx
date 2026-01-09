@@ -115,7 +115,7 @@ export default function App() {
             onSaveConfig={handleSaveAssets}
             autonomousMode={config.autonomousMode}
             onToggleAutoMode={(val) => setConfig(prev => ({ ...prev, autonomousMode: val }))}
-            onNavigate={() => setCurrentView('DASHBOARD')} // INYECCIÓN DE DEPENDENCIA DE NAVEGACIÓN
+            onNavigate={() => setCurrentView('DASHBOARD')} 
           />
         );
       case 'HOLA_MUNDO':
@@ -125,7 +125,8 @@ export default function App() {
     }
   };
 
-  const NavItem = ({ view, icon: Icon, label }: { view: View, icon: any, label: string }) => (
+  // Componente de Navegación Lateral (Desktop)
+  const SidebarItem = ({ view, icon: Icon, label }: { view: View, icon: any, label: string }) => (
     <button
       onClick={() => setCurrentView(view)}
       title={label}
@@ -142,46 +143,65 @@ export default function App() {
     </button>
   );
 
+  // Componente de Navegación Inferior (Mobile)
+  const MobileNavItem = ({ view, icon: Icon, label }: { view: View, icon: any, label: string }) => (
+    <button
+      onClick={() => setCurrentView(view)}
+      className={`flex flex-col items-center justify-center w-full py-3 transition-colors ${
+        currentView === view ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'
+      }`}
+    >
+      <div className={`p-1 rounded-lg ${currentView === view ? 'bg-blue-500/10' : ''}`}>
+        <Icon />
+      </div>
+      <span className="text-[9px] font-bold mt-1 uppercase tracking-wider">{label}</span>
+    </button>
+  );
+
   return (
     <div className="flex h-screen bg-slate-950 text-slate-200 selection:bg-blue-500/30 font-sans overflow-hidden">
       
-      {/* SIDEBAR COMPACTO */}
-      <aside className="w-20 border-r border-slate-800/60 bg-slate-950/50 flex flex-col items-center py-6 relative z-20 hidden md:flex">
-        
+      {/* SIDEBAR COMPACTO (SOLO DESKTOP) */}
+      <aside className="w-20 border-r border-slate-800/60 bg-slate-950/50 hidden md:flex flex-col items-center py-6 relative z-20">
         <nav className="flex-1 w-full flex flex-col items-center gap-4">
-          <NavItem view="DASHBOARD" icon={Icons.Activity} label="Panel de Control" />
-          <NavItem view="EVA_BRAIN" icon={Icons.Brain} label="Red Neuronal" />
-          <NavItem view="ASSETS" icon={Icons.Coins} label="Gestor de Activos" />
-          <NavItem view="SETTINGS" icon={Icons.Settings} label="Configuración" />
+          <SidebarItem view="DASHBOARD" icon={Icons.Activity} label="Panel de Control" />
+          <SidebarItem view="EVA_BRAIN" icon={Icons.Brain} label="Red Neuronal" />
+          <SidebarItem view="ASSETS" icon={Icons.Coins} label="Gestor de Activos" />
+          <SidebarItem view="SETTINGS" icon={Icons.Settings} label="Configuración" />
           <div className="w-8 h-[1px] bg-slate-800 my-2"></div>
-          <NavItem view="HOLA_MUNDO" icon={Icons.Globe} label="Hola Mundo" />
+          <SidebarItem view="HOLA_MUNDO" icon={Icons.Globe} label="Hola Mundo" />
         </nav>
-
         <div className="mt-auto mb-4">
            <div className={`w-3 h-3 rounded-full ${dbConnected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]'}`} title={dbConnected ? "DB Online" : "DB Offline"}></div>
         </div>
       </aside>
 
       {/* MAIN CONTENT AREA */}
-      <main className="flex-1 flex flex-col relative overflow-hidden">
+      <main className="flex-1 flex flex-col relative overflow-hidden h-full">
         {/* Scanlines Effect */}
         <div className="scan-line pointer-events-none fixed inset-0 z-50 opacity-[0.03]"></div>
         
-        {/* Header Mobile */}
-        <div className="md:hidden p-4 border-b border-slate-800 flex justify-between items-center bg-slate-950">
+        {/* HEADER MÓVIL (SOLO BRANDING) */}
+        <div className="md:hidden px-4 py-3 border-b border-slate-800 flex justify-between items-center bg-slate-950/90 backdrop-blur z-30 sticky top-0">
            <div className="flex items-center gap-3">
               <div className="transform scale-110"><Icons.Binance /></div>
-              <span className="font-bold text-white tracking-wide">EVA v10.5</span>
+              <span className="font-bold text-white tracking-wide text-lg">EVA v10.5</span>
            </div>
-           <div className="flex gap-2">
-             <button onClick={() => setCurrentView('DASHBOARD')} className={`p-2 rounded ${currentView === 'DASHBOARD' ? 'bg-blue-600/20 text-blue-400' : 'text-slate-400'}`}><Icons.Activity /></button>
-             <button onClick={() => setCurrentView('HOLA_MUNDO')} className={`p-2 rounded ${currentView === 'HOLA_MUNDO' ? 'bg-blue-600/20 text-blue-400' : 'text-slate-400'}`}><Icons.Globe /></button>
-           </div>
+           <div className={`w-2 h-2 rounded-full ${dbConnected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-rose-500'}`}></div>
         </div>
 
-        {/* View Container */}
-        <div className="flex-1 overflow-hidden relative flex flex-col">
+        {/* CONTENEDOR DE VISTAS */}
+        <div className="flex-1 overflow-hidden relative flex flex-col pb-[70px] md:pb-0">
           {renderContent()}
+        </div>
+
+        {/* BARRA DE NAVEGACIÓN INFERIOR (SOLO MÓVIL) */}
+        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-950 border-t border-slate-800 flex justify-around items-center z-50 backdrop-blur-md pb-safe">
+            <MobileNavItem view="DASHBOARD" icon={Icons.Activity} label="Panel" />
+            <MobileNavItem view="EVA_BRAIN" icon={Icons.Brain} label="Cerebro" />
+            <MobileNavItem view="ASSETS" icon={Icons.Coins} label="Activos" />
+            <MobileNavItem view="SETTINGS" icon={Icons.Settings} label="Ajustes" />
+            <MobileNavItem view="HOLA_MUNDO" icon={Icons.Globe} label="Info" />
         </div>
       </main>
 
