@@ -7,7 +7,13 @@ import { BinanceConfig } from '../../types';
 
 type ChartType = 'CANDLES' | 'LINE' | 'AREA' | 'BARS' | 'HEIKIN';
 
-export const EvaCore = ({ config }: { config: BinanceConfig }) => {
+interface EvaCoreProps {
+    config: BinanceConfig;
+    logs: string[];
+    onLog: (msg: string, type?: 'INFO' | 'WARN' | 'EXEC' | 'SYS') => void;
+}
+
+export const EvaCore = ({ config, logs, onLog }: EvaCoreProps) => {
   // --- ESTADO DE DATOS ---
   const [currentPrice, setCurrentPrice] = useState(0);
   const [priceChange, setPriceChange] = useState(0);
@@ -31,22 +37,8 @@ export const EvaCore = ({ config }: { config: BinanceConfig }) => {
   // --- ESTADO DEL ORDER BOOK ---
   const [asks, setAsks] = useState<{price: number, size: number, total: number, relativeSize: number}[]>([]);
   const [bids, setBids] = useState<{price: number, size: number, total: number, relativeSize: number}[]>([]);
-
-  // --- ESTADO DEL LOG ---
-  const [logs, setLogs] = useState<string[]>([
-      "EVA_SYS_INIT: Conectando a Binance Mainnet...",
-      "GRAPH_ENG: Motor de renderizado vectorial iniciado.",
-      "LIVE_FEED: Sincronizando velas...",
-  ]);
   
   const terminalRef = useRef<HTMLDivElement>(null);
-
-  // --- FUNCIÓN HELPER PARA LOGS ---
-  const addLog = (msg: string, type: 'INFO' | 'WARN' | 'EXEC' | 'SYS' = 'INFO') => {
-      const time = new Date().toISOString().split('T')[1].slice(0, 8);
-      const prefix = type === 'EXEC' ? '⚡ EXEC:' : type === 'WARN' ? '⚠️ WARN:' : type === 'SYS' ? '🚀 SYS:' : 'INFO:';
-      setLogs(prev => [...prev.slice(-19), `[${time}] ${prefix} ${msg}`]);
-  };
 
   // --- VALIDACIÓN Y START DEL SISTEMA ---
   const handleToggleSystem = async () => {
@@ -55,12 +47,12 @@ export const EvaCore = ({ config }: { config: BinanceConfig }) => {
       // 1. APAGADO
       if (isSystemActive) {
           setIsSystemActive(false);
-          addLog("SYSTEM_HALT: Protocolo detenido manualmente.", 'WARN');
+          onLog("SYSTEM_HALT: Protocolo detenido manualmente.", 'WARN');
           return;
       }
 
       // 2. ENCENDIDO (VALIDACIÓN)
-      addLog("SYS_CHECK: Verificando integridad de configuración...", 'SYS');
+      onLog("SYS_CHECK: Verificando integridad de configuración...", 'SYS');
       
       // Simulación de retraso de validación
       setExecuting(true);
@@ -70,7 +62,7 @@ export const EvaCore = ({ config }: { config: BinanceConfig }) => {
       if (!config.apiKey || config.apiKey.trim() === '') {
           const err = "ERROR: API KEY FALTANTE. Configure en Ajustes.";
           setSystemError(err);
-          addLog(err, 'WARN');
+          onLog(err, 'WARN');
           setExecuting(false);
           return;
       }
@@ -78,7 +70,7 @@ export const EvaCore = ({ config }: { config: BinanceConfig }) => {
       if (!config.apiSecret || config.apiSecret.trim() === '') {
           const err = "ERROR: SECRET KEY FALTANTE.";
           setSystemError(err);
-          addLog(err, 'WARN');
+          onLog(err, 'WARN');
           setExecuting(false);
           return;
       }
@@ -87,7 +79,7 @@ export const EvaCore = ({ config }: { config: BinanceConfig }) => {
       if (config.apiKey.length < 15 || config.apiSecret.length < 15) {
           const err = "ERROR: CREDENCIALES INVÁLIDAS (Longitud incorrecta).";
           setSystemError(err);
-          addLog(err, 'WARN');
+          onLog(err, 'WARN');
           setExecuting(false);
           return;
       }
@@ -95,7 +87,7 @@ export const EvaCore = ({ config }: { config: BinanceConfig }) => {
       // C. Éxito
       setExecuting(false);
       setIsSystemActive(true);
-      addLog("SYSTEM_START: Motor EVA activo. Escaneando oportunidades...", 'EXEC');
+      onLog("SYSTEM_START: Motor EVA activo. Escaneando oportunidades...", 'EXEC');
   };
 
   // --- INICIALIZACIÓN DEL GRÁFICO ---
@@ -213,11 +205,11 @@ export const EvaCore = ({ config }: { config: BinanceConfig }) => {
             if (formattedData.length > 0) {
                 const last = formattedData[formattedData.length - 1];
                 setCurrentPrice(last.close);
-                addLog("MARKET_DATA: Historial de precios sincronizado.");
+                onLog("MARKET_DATA: Historial de precios sincronizado.", 'INFO');
             }
         } catch (e) {
             if (!isCleanedUp) {
-                addLog("ERROR: Fallo al cargar historial Klines.", 'WARN');
+                onLog("ERROR: Fallo al cargar historial Klines.", 'WARN');
             }
         }
     };
@@ -313,22 +305,22 @@ export const EvaCore = ({ config }: { config: BinanceConfig }) => {
       if (!isSystemActive) {
           const msg = "SISTEMA DETENIDO. Pulse START para operar.";
           setErrorMsg(msg);
-          addLog(msg, 'WARN');
+          onLog(msg, 'WARN');
           setTimeout(() => setErrorMsg(null), 3000);
           return;
       }
 
       setExecuting(true);
-      addLog(`INIT_ORDER: Preparando orden ${side} MARKET...`, 'EXEC');
+      onLog(`INIT_ORDER: Preparando orden ${side} MARKET...`, 'EXEC');
       try {
           const quantity = 0.0001;
           const result = await executeOrder(config.apiKey, config.apiSecret, 'BTCUSDT', side, quantity);
           setLastOrder(`ORD-${result.orderId}`);
-          addLog(`SUCCESS: Orden ${result.orderId} ejecutada. Precio: ${result.cummulativeQuoteQty}`, 'EXEC');
+          onLog(`SUCCESS: Orden ${result.orderId} ejecutada. Precio: ${result.cummulativeQuoteQty}`, 'EXEC');
       } catch (e: any) {
           const msg = e.message || "Error desconocido en API Binance";
           setErrorMsg(msg.substring(0, 40) + "...");
-          addLog(`FAIL: ${msg}`, 'WARN');
+          onLog(`FAIL: ${msg}`, 'WARN');
       } finally {
           setExecuting(false);
       }
@@ -561,14 +553,14 @@ export const EvaCore = ({ config }: { config: BinanceConfig }) => {
                     </div>
                 </div>
 
-                {/* 4. TERMINAL */}
+                {/* 4. TERMINAL GLOBAL DE EVA (CONECTADO A TODOS LOS MÓDULOS) */}
                 <div className="flex-1 bg-black rounded-xl border border-slate-800 p-3 flex flex-col font-mono text-[10px] shadow-inner min-h-[150px]">
                     <div className="flex items-center gap-2 mb-2 text-slate-500 border-b border-slate-900 pb-1">
                         <Icons.Cpu /> TERMINAL EVA_OS
                     </div>
                     <div ref={terminalRef} className="flex-1 overflow-y-auto space-y-1 custom-scrollbar">
                         {logs.map((log, i) => (
-                            <div key={i} className="flex gap-2 opacity-80 hover:opacity-100 break-all">
+                            <div key={i} className="flex gap-2 opacity-80 hover:opacity-100 break-all animate-in fade-in duration-200">
                                 <span className="text-slate-600 select-none">{'>'}</span>
                                 <span className={`${log.includes('WARN') ? 'text-rose-400' : log.includes('EXEC') ? 'text-yellow-400' : log.includes('SYS') ? 'text-cyan-400' : 'text-slate-300'}`}>
                                     {log}

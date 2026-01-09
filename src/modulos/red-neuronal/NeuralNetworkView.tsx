@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../../supabaseClient';
 import { NeuralMemory } from '../../types';
@@ -20,7 +21,11 @@ interface NeuralConfig {
     autoLoop: boolean;         // PERSISTENCIA: Estado del Bucle Automático
 }
 
-export const NeuralNetworkView = () => {
+interface NeuralProps {
+    onLog: (msg: string, type?: 'INFO' | 'WARN' | 'EXEC' | 'SYS') => void;
+}
+
+export const NeuralNetworkView = ({ onLog }: NeuralProps) => {
     // --- ESTADO DE DATOS VIVOS ---
     const [memories, setMemories] = useState<NeuralMemory[]>([]);
     const [livePrice, setLivePrice] = useState<number>(0);
@@ -73,7 +78,9 @@ export const NeuralNetworkView = () => {
     }, [config]);
 
     const toggleConfig = (key: keyof NeuralConfig) => {
-        setConfig(prev => ({ ...prev, [key]: !prev[key] }));
+        const newValue = !config[key];
+        setConfig(prev => ({ ...prev, [key]: newValue }));
+        onLog(`NEURAL_CFG: ${key} cambiado a ${newValue ? 'ON' : 'OFF'}`, 'SYS');
     };
 
     // --- 1. CONEXIÓN SENSORIAL (WEBSOCKET & SUPABASE) ---
@@ -89,6 +96,7 @@ export const NeuralNetworkView = () => {
                     setMemories(prev => [newMem, ...prev].slice(0, 50));
                     // Feedback de "Pulso" cuando llega memoria externa
                     setLastAction(`SINC: ${newMem.decision} (${newMem.strategy_used})`);
+                    onLog(`MEM_SYNC: Nueva señal recibida de red neuronal: ${newMem.decision}`, 'INFO');
                     setTimeout(() => setLastAction(null), 3000);
                 }
             )
@@ -109,12 +117,15 @@ export const NeuralNetworkView = () => {
         let interval: any;
         // Ahora usamos config.autoLoop en lugar del estado local
         if (config.autoLoop) {
+            onLog("NEURAL_LOOP: Bucle cortical iniciado. Escaneo continuo.", 'EXEC');
             analyzeMarketReal(); 
             interval = setInterval(() => {
                 if (!processingRef.current) {
                     analyzeMarketReal();
                 }
             }, 10000);
+        } else {
+            if (interval) onLog("NEURAL_LOOP: Bucle cortical detenido.", 'SYS');
         }
         return () => clearInterval(interval);
     }, [config.autoLoop]); // Dependencia actualizada a la config persistente
@@ -163,6 +174,7 @@ export const NeuralNetworkView = () => {
             console.error("Error conectando con el núcleo neuronal:", e);
             if (e.code === '42P01') { // Undefined Table
                 setLastAction("ERROR CRÍTICO: FALTA TABLA SQL");
+                onLog("DB_ERROR: Tabla 'eva_collective_memory' no encontrada.", 'WARN');
             }
         } finally {
             setLoading(false);
@@ -243,13 +255,17 @@ export const NeuralNetworkView = () => {
                 if (error) throw error;
 
                 // Notificación Visual
+                const msg = `SIGNAL: ${decision} detectado. Confianza: ${(confidence * 100).toFixed(0)}%. RSI: ${rsi.toFixed(1)}`;
                 setLastAction(`NUEVA MEMORIA: ${decision}`);
+                onLog(msg, 'EXEC');
+
                 setTimeout(() => setLastAction(null), 3000);
                 
                 // Recargar para asegurar sincronía
                 fetchMemories();
             } else {
                 setLastAction("MERCADO NEUTRAL - ESPERANDO");
+                if (!config.autoLoop) onLog(`ANALYSIS: Mercado Neutral. RSI: ${rsi.toFixed(1)}`, 'INFO');
                 setTimeout(() => setLastAction(null), 2000);
             }
 
@@ -261,6 +277,7 @@ export const NeuralNetworkView = () => {
             } else {
                  setLastAction("ERROR: FALLO DE CONEXIÓN DB");
             }
+            onLog("NEURAL_ERR: Fallo en proceso de inferencia.", 'WARN');
             setTimeout(() => setLastAction(null), 4000);
         } finally {
             setProcessing(false);

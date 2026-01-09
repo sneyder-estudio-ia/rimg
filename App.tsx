@@ -30,12 +30,27 @@ export default function App() {
   const [currentView, setCurrentView] = useState<View>('DASHBOARD');
   const [dbConnected, setDbConnected] = useState(false);
   
+  // --- SISTEMA DE LOGGING CENTRALIZADO (NÚCLEO OMNISCIENTE) ---
+  const [systemLogs, setSystemLogs] = useState<string[]>([
+      "EVA_SYS_INIT: Núcleo central inicializado.",
+      "MEMORY_ALLOC: Enlazando módulos neuronales...",
+      "READY: Esperando flujo de datos."
+  ]);
+
+  const addSystemLog = (msg: string, type: 'INFO' | 'WARN' | 'EXEC' | 'SYS' = 'INFO') => {
+      const time = new Date().toLocaleTimeString('es-ES', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const prefix = type === 'EXEC' ? '⚡ EXEC:' : type === 'WARN' ? '⚠️ WARN:' : type === 'SYS' ? '🚀 SYS:' : 'ℹ️ INFO:';
+      // Mantenemos solo los últimos 50 logs para rendimiento
+      setSystemLogs(prev => [...prev.slice(-49), `[${time}] ${prefix} ${msg}`]);
+  };
+
   // --- ESTADO GLOBAL CON PERSISTENCIA (LOCALSTORAGE) ---
   
   // 1. Configuración Global (Inicialización Lazy)
   const [config, setConfig] = useState<BinanceConfig>(() => {
     try {
       const saved = localStorage.getItem('eva_config_v10');
+      if (saved) addSystemLog("Configuración recuperada de almacenamiento local.", 'SYS');
       return saved ? JSON.parse(saved) : DEFAULT_CONFIG;
     } catch (e) {
       return DEFAULT_CONFIG;
@@ -77,30 +92,42 @@ export default function App() {
     const checkConnection = async () => {
       try {
         const { error } = await supabase.from('eva_collective_memory').select('count', { count: 'exact', head: true });
-        setDbConnected(!error);
+        const isConnected = !error;
+        setDbConnected(isConnected);
+        addSystemLog(`Estado de Base de Datos: ${isConnected ? 'CONECTADO' : 'ERROR DE CONEXIÓN'}`, isConnected ? 'SYS' : 'WARN');
       } catch (e) {
         setDbConnected(false);
+        addSystemLog("Fallo crítico al contactar Supabase.", 'WARN');
       }
     };
     checkConnection();
   }, []);
 
   const handleSaveConfig = async () => {
-    console.log("SYNC: Configuración guardada y persistida.");
-    // Aquí se podría agregar lógica para guardar en Supabase también
+    addSystemLog("SYNC: Configuración guardada y persistida.", 'SYS');
   };
 
   const handleSaveAssets = (assets: AssetConfig[]) => {
-    console.log("SYNC: Matriz de activos actualizada.");
+    addSystemLog(`SYNC: Matriz de activos actualizada. ${assets.length} activos rastreados.`, 'SYS');
     setAssetConfigs(assets);
   };
 
   const renderContent = () => {
     switch (currentView) {
       case 'DASHBOARD':
-        return <EvaCore config={config} />;
+        return (
+            <EvaCore 
+                config={config} 
+                logs={systemLogs} 
+                onLog={addSystemLog} 
+            />
+        );
       case 'EVA_BRAIN':
-        return <NeuralNetworkView />;
+        return (
+            <NeuralNetworkView 
+                onLog={addSystemLog} 
+            />
+        );
       case 'SETTINGS':
         return (
           <ConfigurationView 
@@ -117,14 +144,18 @@ export default function App() {
             savedAssetConfigs={assetConfigs}
             onSaveConfig={handleSaveAssets}
             autonomousMode={config.autonomousMode}
-            onToggleAutoMode={(val) => setConfig(prev => ({ ...prev, autonomousMode: val }))}
+            onToggleAutoMode={(val) => {
+                setConfig(prev => ({ ...prev, autonomousMode: val }));
+                addSystemLog(`MODO AUTÓNOMO: ${val ? 'ACTIVADO' : 'DESACTIVADO'}`, 'WARN');
+            }}
             onNavigate={() => setCurrentView('DASHBOARD')} 
+            onLog={addSystemLog}
           />
         );
       case 'HOLA_MUNDO':
         return <HolaMundoView />;
       default:
-        return <EvaCore config={config} />;
+        return <EvaCore config={config} logs={systemLogs} onLog={addSystemLog} />;
     }
   };
 

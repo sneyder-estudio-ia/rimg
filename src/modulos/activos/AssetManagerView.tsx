@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { AssetConfig } from '../../types';
 import { Icons } from '../../components/Icons';
@@ -12,6 +13,7 @@ interface AssetManagerProps {
     autonomousMode: boolean; 
     onToggleAutoMode: (enabled: boolean) => void; 
     onNavigate: () => void; // NUEVA PROP DE NAVEGACIÓN
+    onLog: (msg: string, type?: 'INFO' | 'WARN' | 'EXEC' | 'SYS') => void;
 }
 
 export const AssetManagerView = ({ 
@@ -20,7 +22,8 @@ export const AssetManagerView = ({
     onSaveConfig,
     autonomousMode,
     onToggleAutoMode,
-    onNavigate
+    onNavigate,
+    onLog
 }: AssetManagerProps) => {
     
     const [assets, setAssets] = useState<AssetConfig[]>([]);
@@ -87,7 +90,7 @@ export const AssetManagerView = ({
         // Simulamos un guardado "Complejo" al núcleo
         setTimeout(() => {
             if (autonomousMode) {
-                console.log("GUARDANDO CONFIGURACIÓN: MODO AUTO SOBERANO ACTIVADO");
+                onLog("GUARDANDO CONFIGURACIÓN: MODO AUTO SOBERANO ACTIVADO", 'WARN');
                 const fundedAssets = assets.filter(a => a.balance > 0).map(a => ({...a, isActive: true}));
                 onSaveConfig(fundedAssets); 
             } else {
@@ -97,6 +100,7 @@ export const AssetManagerView = ({
             setSaving(false);
             
             // --- PROTOCOLO DE ALERTA Y REDIRECCIÓN ---
+            onLog("ASSET_MGR: Matriz sincronizada. Redirigiendo a Dashboard.", 'SYS');
             alert("✓ MATRIZ DE ACTIVOS SINCRONIZADA CON ÉXITO.\n\nEL PROTOCOLO EVA REINICIARÁ EL ANÁLISIS EN EL PANEL PRINCIPAL.");
             onNavigate();
 
