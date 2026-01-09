@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { createChart, ColorType, CrosshairMode, IChartApi, ISeriesApi } from 'lightweight-charts';
 import { Icons } from '../../components/Icons';
@@ -20,7 +21,9 @@ export const EvaCore = ({ config }: { config: BinanceConfig }) => {
   const seriesRef = useRef<ISeriesApi<any> | null>(null);
   const candleDataRef = useRef<any[]>([]); // Referencia mutable para updates rápidos
 
-  // --- ESTADO DE EJECUCIÓN ---
+  // --- ESTADO DE EJECUCIÓN Y SISTEMA ---
+  const [isSystemActive, setIsSystemActive] = useState(false); // MASTER SWITCH
+  const [systemError, setSystemError] = useState<string | null>(null); // ERROR DISPLAY
   const [executing, setExecuting] = useState(false);
   const [lastOrder, setLastOrder] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -39,10 +42,60 @@ export const EvaCore = ({ config }: { config: BinanceConfig }) => {
   const terminalRef = useRef<HTMLDivElement>(null);
 
   // --- FUNCIÓN HELPER PARA LOGS ---
-  const addLog = (msg: string, type: 'INFO' | 'WARN' | 'EXEC' = 'INFO') => {
+  const addLog = (msg: string, type: 'INFO' | 'WARN' | 'EXEC' | 'SYS' = 'INFO') => {
       const time = new Date().toISOString().split('T')[1].slice(0, 8);
-      const prefix = type === 'EXEC' ? '⚡ EXEC:' : type === 'WARN' ? '⚠️ WARN:' : 'INFO:';
+      const prefix = type === 'EXEC' ? '⚡ EXEC:' : type === 'WARN' ? '⚠️ WARN:' : type === 'SYS' ? '🚀 SYS:' : 'INFO:';
       setLogs(prev => [...prev.slice(-19), `[${time}] ${prefix} ${msg}`]);
+  };
+
+  // --- VALIDACIÓN Y START DEL SISTEMA ---
+  const handleToggleSystem = async () => {
+      setSystemError(null);
+
+      // 1. APAGADO
+      if (isSystemActive) {
+          setIsSystemActive(false);
+          addLog("SYSTEM_HALT: Protocolo detenido manualmente.", 'WARN');
+          return;
+      }
+
+      // 2. ENCENDIDO (VALIDACIÓN)
+      addLog("SYS_CHECK: Verificando integridad de configuración...", 'SYS');
+      
+      // Simulación de retraso de validación
+      setExecuting(true);
+      await new Promise(resolve => setTimeout(resolve, 600)); 
+
+      // A. Validación de campos vacíos
+      if (!config.apiKey || config.apiKey.trim() === '') {
+          const err = "ERROR: API KEY FALTANTE. Configure en Ajustes.";
+          setSystemError(err);
+          addLog(err, 'WARN');
+          setExecuting(false);
+          return;
+      }
+
+      if (!config.apiSecret || config.apiSecret.trim() === '') {
+          const err = "ERROR: SECRET KEY FALTANTE.";
+          setSystemError(err);
+          addLog(err, 'WARN');
+          setExecuting(false);
+          return;
+      }
+
+      // B. Validación de formato (Simple)
+      if (config.apiKey.length < 15 || config.apiSecret.length < 15) {
+          const err = "ERROR: CREDENCIALES INVÁLIDAS (Longitud incorrecta).";
+          setSystemError(err);
+          addLog(err, 'WARN');
+          setExecuting(false);
+          return;
+      }
+
+      // C. Éxito
+      setExecuting(false);
+      setIsSystemActive(true);
+      addLog("SYSTEM_START: Motor EVA activo. Escaneando oportunidades...", 'EXEC');
   };
 
   // --- INICIALIZACIÓN DEL GRÁFICO ---
@@ -209,7 +262,6 @@ export const EvaCore = ({ config }: { config: BinanceConfig }) => {
         setVolume(data.volume);
 
         // Actualizar vela en tiempo real
-        // IMPORTANTE: Verificar que el chart y la serie existan antes de actualizar
         if (chartApiRef.current && seriesRef.current && candleDataRef.current.length > 0) {
             try {
                 const lastCandle = candleDataRef.current[candleDataRef.current.length - 1];
@@ -223,7 +275,6 @@ export const EvaCore = ({ config }: { config: BinanceConfig }) => {
                 };
 
                 seriesRef.current.update(updatedCandle);
-                // Actualizamos ref local
                 candleDataRef.current[candleDataRef.current.length - 1] = updatedCandle;
             } catch (error) {
                 // Si falla (ej. chart disposed), ignoramos este frame
@@ -258,12 +309,15 @@ export const EvaCore = ({ config }: { config: BinanceConfig }) => {
 
   // --- EJECUCIÓN DE ÓRDENES REALES ---
   const handleTrade = async (side: 'BUY' | 'SELL') => {
-      if (!config.apiKey || !config.apiSecret) {
-          setErrorMsg("FALTAN API KEYS EN CONFIGURACIÓN");
-          addLog("SEC_ERROR: Intento de trading sin credenciales.", 'WARN');
+      // Bloquear si el sistema global no está activo
+      if (!isSystemActive) {
+          const msg = "SISTEMA DETENIDO. Pulse START para operar.";
+          setErrorMsg(msg);
+          addLog(msg, 'WARN');
           setTimeout(() => setErrorMsg(null), 3000);
           return;
       }
+
       setExecuting(true);
       addLog(`INIT_ORDER: Preparando orden ${side} MARKET...`, 'EXEC');
       try {
@@ -305,7 +359,7 @@ export const EvaCore = ({ config }: { config: BinanceConfig }) => {
                     </h1>
                     <div className="flex gap-3 text-xs mt-1">
                         <span className="text-slate-500">24h Vol: <span className="text-slate-300">{parseFloat(volume).toLocaleString()}</span></span>
-                        <span className="text-slate-500">Estado: <span className="text-emerald-400">CONECTADO</span></span>
+                        <span className="text-slate-500">Estado: <span className={isSystemActive ? "text-emerald-400 animate-pulse" : "text-slate-500"}>{isSystemActive ? 'ONLINE' : 'STANDBY'}</span></span>
                     </div>
                 </div>
             </div>
@@ -365,39 +419,75 @@ export const EvaCore = ({ config }: { config: BinanceConfig }) => {
                         <div className="relative flex-1 w-full h-full bg-slate-950/20" ref={chartContainerRef}>
                              {/* El gráfico se inyecta aquí */}
                         </div>
-
-                        {/* ESTADÍSTICAS FLOTANTES EN EL GRÁFICO */}
-                        <div className="absolute top-12 left-4 z-20 pointer-events-none">
-                            <div className="flex flex-col gap-1">
-                                <div className="text-xs font-bold text-slate-300">Volumen (24h)</div>
-                                <div className="text-lg font-mono text-white">{parseFloat(volume).toLocaleString()} BTC</div>
-                            </div>
-                        </div>
                     </div>
                 </div>
 
                 {/* 2. PANEL DE CONTROL ESTRATÉGICO REAL */}
                 <div className="h-auto md:h-48 grid grid-cols-1 md:grid-cols-2 gap-4 shrink-0">
                     
-                    {/* A. AGENTE NEURONAL STATUS */}
+                    {/* A. AGENTE NEURONAL STATUS & MASTER SWITCH */}
                     <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 flex flex-col justify-between relative overflow-hidden min-h-[180px]">
-                        <div className="absolute right-0 top-0 w-32 h-32 bg-purple-500/10 blur-3xl rounded-full pointer-events-none"></div>
-                        <h3 className="text-white font-bold flex items-center gap-2 z-10">
-                            <Icons.Bot /> NÚCLEO EVA v10.5
-                        </h3>
-                        <div className="z-10 space-y-2">
-                             <div className="text-xs text-slate-400">Estrategia Activa: <span className="text-white font-bold">{config.strategy}</span></div>
-                             <div className="text-xs text-slate-400">Modo Autónomo: <span className={config.autonomousMode ? "text-purple-400 font-bold" : "text-slate-500"}>{config.autonomousMode ? 'ON' : 'OFF'}</span></div>
+                        <div className={`absolute right-0 top-0 w-48 h-48 blur-3xl rounded-full pointer-events-none transition-colors duration-1000 ${isSystemActive ? 'bg-emerald-500/10' : 'bg-rose-500/5'}`}></div>
+                        
+                        <div className="flex justify-between items-start z-10">
+                            <h3 className="text-white font-bold flex items-center gap-2">
+                                <Icons.Bot /> NÚCLEO EVA v10.5
+                            </h3>
+                            <div className={`w-3 h-3 rounded-full shadow-lg ${isSystemActive ? 'bg-emerald-500 animate-pulse shadow-emerald-500/50' : 'bg-slate-600'}`}></div>
+                        </div>
+
+                        <div className="z-10 mt-2">
+                             {/* MASTER START BUTTON */}
+                             <button 
+                                onClick={handleToggleSystem}
+                                disabled={executing}
+                                className={`w-full py-4 rounded-lg font-black text-sm tracking-widest transition-all duration-300 flex items-center justify-center gap-3 shadow-lg border relative overflow-hidden group ${
+                                    isSystemActive 
+                                    ? 'bg-rose-900/20 text-rose-500 border-rose-500/50 hover:bg-rose-900/40' 
+                                    : 'bg-emerald-600 text-white border-emerald-400 hover:bg-emerald-500 hover:scale-[1.02] shadow-emerald-900/50'
+                                }`}
+                             >
+                                {isSystemActive && <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/diagmonds-light.png')] opacity-20"></div>}
+                                {executing ? (
+                                    <span className="animate-pulse">VERIFICANDO...</span>
+                                ) : (
+                                    <>
+                                        {isSystemActive ? <Icons.Stop /> : <Icons.Play />}
+                                        {isSystemActive ? 'DETENER SISTEMA' : 'INICIAR PROTOCOLO'}
+                                    </>
+                                )}
+                             </button>
+
+                             {/* MENSAJE DE ERROR DEL SISTEMA */}
+                             {systemError && (
+                                 <div className="mt-2 text-[10px] text-rose-400 bg-rose-950/30 border border-rose-500/30 p-2 rounded flex items-center gap-2 animate-in fade-in slide-in-from-top-1">
+                                     <Icons.Alert />
+                                     <span className="font-bold">{systemError}</span>
+                                 </div>
+                             )}
+
+                             {!systemError && (
+                                 <div className="mt-2 text-[10px] text-slate-500 text-center font-mono">
+                                     {isSystemActive ? 'EJECUCIÓN ACTIVA: MONITOREANDO MERCADO' : 'ESPERANDO ORDEN DE INICIO'}
+                                 </div>
+                             )}
                         </div>
                     </div>
 
                     {/* B. OPERATIVA MANUAL REAL */}
-                    <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 flex gap-4 items-center min-h-[180px] relative">
+                    <div className={`bg-slate-900/60 border border-slate-800 rounded-xl p-4 flex gap-4 items-center min-h-[180px] relative transition-opacity duration-300 ${!isSystemActive ? 'opacity-60 grayscale' : 'opacity-100'}`}>
                         {errorMsg && (
-                            <div className="absolute inset-0 bg-slate-950/90 z-20 flex items-center justify-center p-4 text-center">
+                            <div className="absolute inset-0 bg-slate-950/90 z-20 flex items-center justify-center p-4 text-center rounded-xl">
                                 <span className="text-rose-500 font-bold text-xs">{errorMsg}</span>
                             </div>
                         )}
+                        
+                        {!isSystemActive && !errorMsg && (
+                             <div className="absolute inset-0 bg-slate-950/40 z-10 flex items-center justify-center rounded-xl backdrop-blur-[1px]">
+                                <span className="text-[10px] font-bold text-white bg-black/50 px-3 py-1 rounded border border-slate-700">SISTEMA INACTIVO</span>
+                            </div>
+                        )}
+
                         <div className="flex-1 space-y-3">
                             <div className="flex justify-between text-xs font-bold text-slate-400 uppercase">
                                 <span>Orden de Mercado</span>
@@ -407,17 +497,17 @@ export const EvaCore = ({ config }: { config: BinanceConfig }) => {
                             <div className="flex gap-2 mt-2">
                                 <button 
                                     onClick={() => handleTrade('BUY')}
-                                    disabled={executing}
-                                    className={`flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded font-bold text-sm shadow-[0_0_15px_rgba(16,185,129,0.2)] transition-all active:scale-95 ${executing ? 'opacity-50 cursor-wait' : ''}`}
+                                    disabled={executing || !isSystemActive}
+                                    className={`flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded font-bold text-sm shadow-[0_0_15px_rgba(16,185,129,0.2)] transition-all active:scale-95 ${executing || !isSystemActive ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 >
-                                    {executing ? 'ENVIANDO...' : 'BUY / LONG'}
+                                    {executing ? '...' : 'BUY / LONG'}
                                 </button>
                                 <button 
                                     onClick={() => handleTrade('SELL')}
-                                    disabled={executing}
-                                    className={`flex-1 bg-rose-600 hover:bg-rose-500 text-white py-3 rounded font-bold text-sm shadow-[0_0_15px_rgba(244,63,94,0.2)] transition-all active:scale-95 ${executing ? 'opacity-50 cursor-wait' : ''}`}
+                                    disabled={executing || !isSystemActive}
+                                    className={`flex-1 bg-rose-600 hover:bg-rose-500 text-white py-3 rounded font-bold text-sm shadow-[0_0_15px_rgba(244,63,94,0.2)] transition-all active:scale-95 ${executing || !isSystemActive ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 >
-                                    {executing ? 'ENVIANDO...' : 'SELL / SHORT'}
+                                    {executing ? '...' : 'SELL / SHORT'}
                                 </button>
                             </div>
                             <p className="text-[10px] text-slate-500 text-center">
@@ -480,7 +570,7 @@ export const EvaCore = ({ config }: { config: BinanceConfig }) => {
                         {logs.map((log, i) => (
                             <div key={i} className="flex gap-2 opacity-80 hover:opacity-100 break-all">
                                 <span className="text-slate-600 select-none">{'>'}</span>
-                                <span className={`${log.includes('WARN') ? 'text-rose-400' : log.includes('EXEC') ? 'text-yellow-400' : 'text-slate-300'}`}>
+                                <span className={`${log.includes('WARN') ? 'text-rose-400' : log.includes('EXEC') ? 'text-yellow-400' : log.includes('SYS') ? 'text-cyan-400' : 'text-slate-300'}`}>
                                     {log}
                                 </span>
                             </div>
