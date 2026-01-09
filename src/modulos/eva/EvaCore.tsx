@@ -1,166 +1,353 @@
 
-import React from 'react';
-import { MarketData } from '../../types';
+import React, { useState, useEffect, useRef } from 'react';
+import { Icons } from '../../components/Icons';
 
-// --- ICONOS LOCALES PARA ESTE MÓDULO ---
-const Icons = {
-  Wallet: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4"/><path d="M4 6v12a2 2 0 0 0 2 2h14v-4"/><path d="M18 12a2 2 0 0 0-2 2c0 1.1.9 2 2 2h4v-4h-4z"/></svg>,
-  TrendingUp: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>,
-  TrendingDown: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>,
-  Alert: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>,
-  Cpu: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>
-};
-
-// --- ESTRATEGIAS ---
-const MOCK_STRATEGIES = [
-  { id: 1, name: 'SCALPING_MACD_REAL', status: 'ACTIVE', risk: 'HIGH', allocation: '100%' },
-];
-
-interface EvaCoreProps {
-    marketData: MarketData;
-    accountBalance: { asset: string, free: string, locked: string }[];
-}
-
-export const EvaCore = ({ marketData, accountBalance }: EvaCoreProps) => {
-  // Filtrar balances reales significativos
-  const significantBalances = accountBalance.filter(b => parseFloat(b.free) > 0 || parseFloat(b.locked) > 0);
+export const EvaCore = () => {
+  // --- ESTADO DEL CHART Y DATOS ---
+  const [prices, setPrices] = useState<number[]>([]);
+  const [currentPrice, setCurrentPrice] = useState(64247.59);
+  const [priceChange, setPriceChange] = useState(0);
   
-  // Calcular valor estimado en USDT (muy básico, asumiendo USDT como base)
-  const usdtBalance = significantBalances.find(b => b.asset === 'USDT');
-  const totalUsdt = usdtBalance ? parseFloat(usdtBalance.free) + parseFloat(usdtBalance.locked) : 0;
+  // --- ESTADO DEL ORDER BOOK ---
+  const [asks, setAsks] = useState<{price: number, size: number, total: number, relativeSize: number}[]>([]);
+  const [bids, setBids] = useState<{price: number, size: number, total: number, relativeSize: number}[]>([]);
 
-  // Lógica de Alerta basada en movimiento de precio real
-  let alertStatus = 'NEUTRAL';
-  let alertColor = 'text-yellow-500 border-yellow-500/50 bg-yellow-500/10';
-  let alertMessage = 'ESPERANDO SEÑAL';
-  let glowEffect = 'shadow-yellow-900/20';
+  // --- ESTADO DEL LOG ---
+  const [logs, setLogs] = useState<string[]>([
+      "EVA_SYS_INIT: Protocolo de enlace establecido...",
+      "NET_SEC: Canal encriptado SHA-256 activo.",
+      "MARKET_FEED: Sincronizando par BTC/USDT...",
+      "NEURAL_ENG: Estrategia SCALPING cargada en memoria.",
+      "READY: Esperando confirmación de ruptura."
+  ]);
+  
+  // Referencias para control de scroll
+  const terminalRef = useRef<HTMLDivElement>(null);
+  const mainContainerRef = useRef<HTMLDivElement>(null);
 
-  if (marketData.change24h > 2) {
-    alertStatus = 'WINNING';
-    alertColor = 'text-emerald-500 border-emerald-500/50 bg-emerald-500/10';
-    alertMessage = 'TENDENCIA ALCISTA FUERTE';
-    glowEffect = 'shadow-emerald-900/20';
-  } else if (marketData.change24h < -2) {
-    alertStatus = 'LOSING';
-    alertColor = 'text-rose-500 border-rose-500/50 bg-rose-500/10';
-    alertMessage = 'TENDENCIA BAJISTA - PRECAUCIÓN';
-    glowEffect = 'shadow-rose-900/20';
-  }
+  // --- GENERADOR DE DATOS SIMULADOS (Init) ---
+  useEffect(() => {
+    // Scroll al inicio al montar el componente para asegurar vista superior
+    if (mainContainerRef.current) {
+        mainContainerRef.current.scrollTop = 0;
+    }
+
+    // Generar historial de precios inicial
+    const initialPrices = [];
+    let price = 64247.59;
+    for (let i = 0; i < 60; i++) {
+        price = price + (Math.random() - 0.5) * 80;
+        initialPrices.push(price);
+    }
+    setPrices(initialPrices);
+    setCurrentPrice(price);
+  }, []);
+
+  // --- BUCLE DE ACTUALIZACIÓN EN VIVO (HEARTBEAT) ---
+  useEffect(() => {
+    const interval = setInterval(() => {
+        // 1. Actualizar Precio
+        const change = (Math.random() - 0.5) * 25;
+        setPriceChange(change);
+        
+        setCurrentPrice(prev => {
+            const newPrice = prev + change;
+            setPrices(prevPrices => {
+                const newHistory = [...prevPrices.slice(1), newPrice];
+                return newHistory;
+            });
+            
+            // Generar Order Book Dinámico
+            const generateSide = (base: number, type: 'ask' | 'bid') => {
+                return Array.from({length: 14}).map((_, i) => {
+                    const spread = type === 'ask' ? i * 2 : i * 2;
+                    const p = type === 'ask' ? base + spread + Math.random() : base - spread - Math.random();
+                    const s = Math.random() * 2.5;
+                    return {
+                        price: p,
+                        size: s,
+                        total: s * p,
+                        relativeSize: Math.min((s / 2.5) * 100, 100) // Para la barra visual
+                    };
+                }).sort((a, b) => type === 'ask' ? b.price - a.price : b.price - a.price);
+            };
+
+            setAsks(generateSide(newPrice + 5, 'ask'));
+            setBids(generateSide(newPrice - 5, 'bid'));
+            
+            return newPrice;
+        });
+
+        // 2. Logs aleatorios
+        if (Math.random() > 0.85) {
+            const events = [
+                "SCAN: Volatilidad detectada en rango 15m.",
+                "ORD_FLOW: Ballena detectada (120 BTC).",
+                "NET_LATENCY: 12ms - Óptimo.",
+                "STRATEGY: Recalculando niveles Fibonacci...",
+                "UPDATE: Libro de órdenes actualizado."
+            ];
+            const msg = events[Math.floor(Math.random() * events.length)];
+            const time = new Date().toISOString().split('T')[1].slice(0, 8);
+            setLogs(prev => [...prev.slice(-12), `[${time}] ${msg}`]);
+        }
+
+    }, 800); // 800ms refresh rate
+    return () => clearInterval(interval);
+  }, []);
+
+  // Auto-scroll terminal solo dentro de su contenedor (sin afectar ventana principal)
+  useEffect(() => {
+    if (terminalRef.current) {
+        terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
+    }
+  }, [logs]);
+
+  // --- RENDERIZADO DEL GRÁFICO (SVG PATH) ---
+  const renderChart = () => {
+      if (prices.length === 0) return { path: "", fill: "" };
+      const min = Math.min(...prices);
+      const max = Math.max(...prices);
+      const range = max - min || 1;
+      const height = 300;
+      const width = 1000;
+      
+      const points = prices.map((p, i) => {
+          const x = (i / (prices.length - 1)) * width;
+          const y = height - ((p - min) / range) * height * 0.8 - 20; // Margen
+          return `${x},${y}`;
+      });
+
+      const linePath = `M${points.join(' L')}`;
+      const areaPath = `${linePath} L ${width},${height} L 0,${height} Z`;
+
+      return { path: linePath, area: areaPath };
+  };
+
+  const { path, area } = renderChart();
+  const isPositive = priceChange >= 0;
 
   return (
-    <div className="flex-1 h-full w-full bg-slate-950 relative overflow-y-auto p-4 md:p-8 font-sans">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-slate-900/30 via-slate-950 to-slate-950 pointer-events-none fixed"></div>
-      
-      <div className="relative z-10 max-w-7xl mx-auto space-y-6">
-        
-        {/* CABECERA */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-end border-b border-slate-800 pb-4 gap-4">
-            <div>
-                <h1 className="text-3xl md:text-4xl font-bold text-slate-100 tracking-tight flex items-center gap-3">
-                    <Icons.Cpu /> NÚCLEO DE EJECUCIÓN
-                </h1>
-                <p className="text-slate-500 font-mono text-xs mt-1">CONEXIÓN DIRECTA BINANCE // SIN LATENCIA</p>
+    <div ref={mainContainerRef} className="flex flex-col h-full bg-[#050b14] font-mono text-slate-300 relative overflow-y-auto custom-scrollbar">
+        {/* BACKGROUND GRIDS */}
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(18,24,38,0.5)_1px,transparent_1px),linear-gradient(90deg,rgba(18,24,38,0.5)_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none h-full min-h-screen"></div>
+
+        {/* --- HEADER TÁCTICO --- */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800/60 bg-[#050b14]/90 backdrop-blur z-20 sticky top-0">
+            <div className="flex items-center gap-4">
+                <div className="bg-slate-900 border border-slate-700 p-2 rounded-lg text-white">
+                    <Icons.Binance />
+                </div>
+                <div>
+                    <h1 className="text-xl font-bold text-white tracking-wider flex items-center gap-2">
+                        BTC / USDT <span className="text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded border border-slate-700">PERP</span>
+                    </h1>
+                    <div className="flex gap-3 text-xs mt-1">
+                        <span className="text-slate-500">24h Vol: <span className="text-slate-300">42,102 BTC</span></span>
+                        <span className="text-slate-500">Funding: <span className="text-emerald-400">0.0100%</span></span>
+                    </div>
+                </div>
             </div>
             
-            <div className={`px-6 py-3 rounded-lg border-2 font-bold font-mono tracking-widest flex items-center gap-3 animate-pulse shadow-lg ${alertColor} ${glowEffect}`}>
-                <Icons.Alert />
-                {alertMessage}
+            <div className="flex gap-6 items-center">
+                 <div className="text-right hidden sm:block">
+                    <div className="text-[10px] text-slate-500 uppercase tracking-widest">Precio de Marca</div>
+                    <div className={`text-2xl font-bold tracking-tight ${isPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {currentPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    </div>
+                 </div>
+                 <div className={`px-4 py-2 rounded border flex flex-col items-center justify-center min-w-[80px] ${isPositive ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-rose-500/10 border-rose-500/30'}`}>
+                    <span className={`text-xs font-bold ${isPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {isPositive ? '+' : ''}{priceChange.toFixed(2)}%
+                    </span>
+                    <span className="text-[10px] text-slate-500">24H CHANGE</span>
+                 </div>
             </div>
         </div>
 
-        {/* CONTENEDORES DE DINERO (KPIs) */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-slate-900/50 p-6 rounded-xl border border-slate-800 backdrop-blur-sm relative overflow-hidden group hover:border-blue-500/50 transition-all">
-                <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity text-blue-500"><Icons.Wallet /></div>
-                <h3 className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Balance USDT (Disp.)</h3>
-                <div className="text-3xl font-mono text-white font-bold">
-                    {usdtBalance ? parseFloat(usdtBalance.free).toFixed(2) : '0.00'}
-                    <span className="text-sm text-slate-500 ml-2">USDT</span>
-                </div>
-            </div>
-
-            <div className="bg-slate-900/50 p-6 rounded-xl border border-slate-800 backdrop-blur-sm relative overflow-hidden group hover:border-emerald-500/50 transition-all">
-                <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity text-emerald-500"><Icons.TrendingUp /></div>
-                <h3 className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Precio Real BTC</h3>
-                <div className={`text-3xl font-mono font-bold flex items-center gap-2 ${marketData.change24h >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    ${marketData.price.toFixed(2)}
-                </div>
-                <div className={`text-[10px] font-mono mt-2 ${marketData.change24h >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                    CAMBIO 24H: {marketData.change24h > 0 ? '+' : ''}{marketData.change24h}%
-                </div>
-            </div>
-
-            <div className="bg-slate-900/50 p-6 rounded-xl border border-slate-800 backdrop-blur-sm relative overflow-hidden group hover:border-rose-500/50 transition-all">
-                <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity text-rose-500"><Icons.TrendingDown /></div>
-                <h3 className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Volumen 24h</h3>
-                <div className="text-3xl font-mono text-slate-300 font-bold">{marketData.volume}</div>
-                <div className="text-[10px] text-slate-500 font-mono mt-2">LIQUIDEZ DE MERCADO</div>
-            </div>
-        </div>
-
-        {/* SECCIÓN INFERIOR: CARTERA REAL */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* --- MAIN WORKSPACE --- */}
+        <div className="flex-1 flex flex-col lg:flex-row relative z-10 p-4 gap-4 min-h-0">
             
-            <div className="bg-slate-900/80 rounded-xl border border-slate-800 p-5 shadow-xl">
-                <div className="flex items-center justify-between mb-4 border-b border-slate-800 pb-2">
-                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                        <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                        ACTIVOS EN CARTERA (SPOT)
-                    </h3>
-                    <span className="text-[10px] bg-slate-800 px-2 py-1 rounded text-slate-400">{significantBalances.length} ACTIVOS</span>
-                </div>
-                <div className="overflow-x-auto">
-                    {significantBalances.length === 0 ? (
-                        <div className="text-center py-8 text-slate-500 text-xs">No se detectaron fondos o API Key no configurada.</div>
-                    ) : (
-                        <table className="w-full text-left text-xs font-mono">
-                            <thead className="text-slate-500 border-b border-slate-800">
-                                <tr>
-                                    <th className="pb-2 pl-2">ACTIVO</th>
-                                    <th className="pb-2 text-right">LIBRE</th>
-                                    <th className="pb-2 text-right">BLOQUEADO</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-800">
-                                {significantBalances.map((asset) => (
-                                    <tr key={asset.asset} className="group hover:bg-slate-800/30">
-                                        <td className="py-3 pl-2 font-bold text-slate-200">{asset.asset}</td>
-                                        <td className="py-3 text-right text-emerald-400">{parseFloat(asset.free).toFixed(4)}</td>
-                                        <td className="py-3 text-right text-rose-400">{parseFloat(asset.locked).toFixed(4)}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    )}
-                </div>
-            </div>
+            {/* COLUMNA IZQUIERDA: CHART + CONTROLES */}
+            <div className="flex-[3] flex flex-col gap-4 min-w-0">
+                
+                {/* 1. CHART CONTAINER */}
+                <div className="flex-1 bg-slate-900/40 border border-slate-800 rounded-xl relative overflow-hidden group shadow-2xl min-h-[400px]">
+                    <div className="absolute top-4 left-4 z-10 flex gap-2">
+                         {['15m', '1H', '4H', '1D'].map(tf => (
+                             <button key={tf} className={`px-3 py-1 text-xs font-bold rounded border ${tf === '15m' ? 'bg-slate-800 text-white border-slate-600' : 'bg-transparent text-slate-500 border-transparent hover:bg-slate-800/50'}`}>
+                                 {tf}
+                             </button>
+                         ))}
+                    </div>
 
-            <div className="bg-slate-900/80 rounded-xl border border-slate-800 p-5 shadow-xl">
-                <div className="flex items-center justify-between mb-4 border-b border-slate-800 pb-2">
-                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                        <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
-                        ESTRATEGIAS
-                    </h3>
+                    <div className="absolute inset-0 z-0">
+                         <svg className="w-full h-full overflow-visible" preserveAspectRatio="none" viewBox="0 0 1000 300">
+                            <defs>
+                                <linearGradient id="chartGradient" x1="0" x2="0" y1="0" y2="1">
+                                    <stop offset="0%" stopColor={isPositive ? '#10b981' : '#f43f5e'} stopOpacity="0.3" />
+                                    <stop offset="100%" stopColor={isPositive ? '#10b981' : '#f43f5e'} stopOpacity="0" />
+                                </linearGradient>
+                            </defs>
+                            {/* Grid Lines H */}
+                            <line x1="0" y1="75" x2="1000" y2="75" stroke="#1e293b" strokeWidth="1" strokeDasharray="4 4" />
+                            <line x1="0" y1="150" x2="1000" y2="150" stroke="#1e293b" strokeWidth="1" strokeDasharray="4 4" />
+                            <line x1="0" y1="225" x2="1000" y2="225" stroke="#1e293b" strokeWidth="1" strokeDasharray="4 4" />
+                            
+                            {/* Area & Line */}
+                            <path d={area} fill="url(#chartGradient)" />
+                            <path d={path} fill="none" stroke={isPositive ? '#10b981' : '#f43f5e'} strokeWidth="2.5" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+                         </svg>
+                         
+                         {/* Pulsing Dot at current price */}
+                         <div className="absolute right-0 w-2 h-2 rounded-full transform -translate-y-1/2 translate-x-1/2" 
+                              style={{ 
+                                  top: `${300 - ((currentPrice - Math.min(...prices)) / (Math.max(...prices) - Math.min(...prices) || 1)) * 300 * 0.8 - 20}px`,
+                                  backgroundColor: isPositive ? '#10b981' : '#f43f5e',
+                                  boxShadow: isPositive ? '0 0 15px #10b981' : '0 0 15px #f43f5e'
+                              }}
+                         >
+                             <div className={`absolute inset-0 rounded-full animate-ping opacity-75 ${isPositive ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
+                         </div>
+                    </div>
                 </div>
-                <div className="space-y-3">
-                    {MOCK_STRATEGIES.map((strat) => (
-                        <div key={strat.id} className="bg-slate-950 p-3 rounded-lg border border-slate-800 flex justify-between items-center">
+
+                {/* 2. PANEL DE CONTROL ESTRATÉGICO */}
+                <div className="h-auto md:h-48 grid grid-cols-1 md:grid-cols-2 gap-4 shrink-0">
+                    
+                    {/* A. AGENTE NEURONAL STATUS */}
+                    <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 flex flex-col justify-between relative overflow-hidden min-h-[180px]">
+                        <div className="absolute right-0 top-0 w-32 h-32 bg-purple-500/10 blur-3xl rounded-full pointer-events-none"></div>
+                        
+                        <div className="flex justify-between items-start z-10">
                             <div>
-                                <div className="text-sm font-bold text-slate-200">{strat.name}</div>
-                                <div className="text-[10px] text-slate-500 font-mono mt-1">
-                                    ASIGNACIÓN: {strat.allocation}
+                                <h3 className="text-white font-bold flex items-center gap-2">
+                                    <Icons.Bot /> NÚCLEO EVA v10.5
+                                </h3>
+                                <div className="flex items-center gap-2 mt-1">
+                                    <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse"></div>
+                                    <span className="text-xs text-purple-300">Analizando Fractalidad...</span>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <span className={`w-2 h-2 rounded-full ${strat.status === 'ACTIVE' ? 'bg-emerald-500 animate-pulse' : 'bg-yellow-500'}`}></span>
-                                <span className="text-xs font-mono text-slate-400">{strat.status}</span>
+                            <div className="text-right">
+                                <div className="text-[10px] text-slate-500 uppercase">Confianza IA</div>
+                                <div className="text-xl font-bold text-white">87.4%</div>
                             </div>
                         </div>
-                    ))}
+
+                        <div className="space-y-2 z-10 mt-4 md:mt-0">
+                            <div className="flex justify-between text-xs text-slate-400">
+                                <span>Carga CPU</span>
+                                <span>34%</span>
+                            </div>
+                            <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                                <div className="h-full bg-purple-500 w-[34%]"></div>
+                            </div>
+                            
+                            <div className="flex justify-between text-xs text-slate-400 mt-1">
+                                <span>Latencia Red</span>
+                                <span className="text-emerald-400">12ms</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* B. OPERATIVA MANUAL */}
+                    <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 flex gap-4 items-center min-h-[180px]">
+                        <div className="flex-1 space-y-3">
+                            <div className="flex justify-between text-xs font-bold text-slate-400 uppercase">
+                                <span>Tamaño</span>
+                                <span>Apalancamiento</span>
+                            </div>
+                            <div className="flex justify-between text-white font-mono">
+                                <span className="bg-slate-950 border border-slate-700 px-3 py-1 rounded w-full mr-2 text-center">0.5 BTC</span>
+                                <span className="bg-slate-950 border border-slate-700 px-3 py-1 rounded text-yellow-500">20x</span>
+                            </div>
+                            <div className="flex gap-2 mt-2">
+                                <button className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-2 rounded font-bold text-sm shadow-[0_0_15px_rgba(16,185,129,0.2)] transition-all active:scale-95">
+                                    LONG
+                                </button>
+                                <button className="flex-1 bg-rose-600 hover:bg-rose-500 text-white py-2 rounded font-bold text-sm shadow-[0_0_15px_rgba(244,63,94,0.2)] transition-all active:scale-95">
+                                    SHORT
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
                 </div>
             </div>
+
+            {/* COLUMNA DERECHA: ORDER BOOK & TERMINAL */}
+            <div className="flex-1 flex flex-col gap-4 min-w-[300px] max-w-md">
+                
+                {/* 3. ORDER BOOK VISUAL */}
+                <div className="flex-[2] bg-slate-900/40 border border-slate-800 rounded-xl overflow-hidden flex flex-col min-h-[400px]">
+                    <div className="bg-slate-900/80 p-3 border-b border-slate-800 flex justify-between items-center">
+                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Libro de Órdenes</h3>
+                        <div className="flex gap-1">
+                            <div className="w-1.5 h-1.5 rounded-full bg-slate-600"></div>
+                            <div className="w-1.5 h-1.5 rounded-full bg-slate-600"></div>
+                            <div className="w-1.5 h-1.5 rounded-full bg-slate-600"></div>
+                        </div>
+                    </div>
+                    
+                    <div className="flex-1 flex flex-col text-[10px] font-mono relative overflow-hidden">
+                        {/* ASKS (Venta) - Se llena de abajo hacia arriba */}
+                        <div className="flex-1 flex flex-col justify-end overflow-hidden pb-1">
+                            {asks.slice(0, 14).reverse().map((ask, i) => (
+                                <div key={i} className="flex justify-between items-center px-2 py-0.5 relative hover:bg-slate-800/50 cursor-crosshair group">
+                                    {/* Barra de volumen visual */}
+                                    <div className="absolute right-0 top-0 bottom-0 bg-rose-500/10 transition-all duration-300" style={{width: `${ask.relativeSize}%`}}></div>
+                                    
+                                    <span className="text-rose-400 z-10 font-bold group-hover:text-rose-300">{ask.price.toFixed(2)}</span>
+                                    <span className="text-slate-400 z-10 group-hover:text-white">{ask.size.toFixed(3)}</span>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* SPREAD INDICATOR */}
+                        <div className="py-2 bg-slate-950 border-y border-slate-800 flex justify-between px-4 items-center">
+                             <span className={`text-lg font-bold ${isPositive ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                {currentPrice.toFixed(2)}
+                             </span>
+                             <span className="text-[10px] text-slate-500">ÚLTIMO PRECIO</span>
+                        </div>
+
+                        {/* BIDS (Compra) */}
+                        <div className="flex-1 flex flex-col overflow-hidden pt-1">
+                            {bids.slice(0, 14).map((bid, i) => (
+                                <div key={i} className="flex justify-between items-center px-2 py-0.5 relative hover:bg-slate-800/50 cursor-crosshair group">
+                                     {/* Barra de volumen visual */}
+                                     <div className="absolute right-0 top-0 bottom-0 bg-emerald-500/10 transition-all duration-300" style={{width: `${bid.relativeSize}%`}}></div>
+                                     
+                                    <span className="text-emerald-400 z-10 font-bold group-hover:text-emerald-300">{bid.price.toFixed(2)}</span>
+                                    <span className="text-slate-400 z-10 group-hover:text-white">{bid.size.toFixed(3)}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+
+                {/* 4. MINI TERMINAL */}
+                <div className="flex-1 bg-black rounded-xl border border-slate-800 p-3 flex flex-col font-mono text-[10px] shadow-inner min-h-[150px]">
+                    <div className="flex items-center gap-2 mb-2 text-slate-500 border-b border-slate-900 pb-1">
+                        <Icons.Cpu /> TERMINAL EVA_OS
+                    </div>
+                    {/* Contenedor de logs con referencia para auto-scroll contenido */}
+                    <div ref={terminalRef} className="flex-1 overflow-y-auto space-y-1 custom-scrollbar">
+                        {logs.map((log, i) => (
+                            <div key={i} className="flex gap-2 opacity-80 hover:opacity-100">
+                                <span className="text-slate-600 select-none">{'>'}</span>
+                                <span className={`${log.includes('SCAN') ? 'text-yellow-400' : log.includes('ORD') ? 'text-blue-400' : 'text-slate-300'}`}>
+                                    {log}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+            </div>
+
         </div>
-      </div>
     </div>
   );
 };

@@ -91,7 +91,7 @@ export const ConfigurationView = ({
     };
 
     return (
-        <div className="flex-1 p-6 md:p-8 overflow-y-auto bg-slate-950">
+        <div className="flex-1 h-full p-6 md:p-8 overflow-y-auto bg-slate-950 custom-scrollbar">
             <div className="max-w-4xl mx-auto space-y-8">
                 {/* Header */}
                 <div className="border-b border-slate-800 pb-6 flex justify-between items-end">

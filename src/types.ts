@@ -1,5 +1,5 @@
 
-export type View = 'DASHBOARD' | 'SETTINGS' | 'EVA_BRAIN' | 'NEURAL_NET' | 'ASSETS';
+export type View = 'DASHBOARD' | 'SETTINGS' | 'EVA_BRAIN' | 'NEURAL_NET' | 'ASSETS' | 'HOLA_MUNDO';
 export type BotStatus = 'IDLE' | 'CONNECTING' | 'ANALYZING' | 'EXECUTING' | 'HALTED';
 export type ChartType = 'line' | 'candle' | 'bar' | 'area' | 'depth';
 export type StrategyType = 'SCALPING_MACD' | 'SWING_RSI' | 'AI_SENTIMENT';
