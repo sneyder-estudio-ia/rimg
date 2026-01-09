@@ -4,6 +4,7 @@ import { createChart, ColorType, CrosshairMode, IChartApi, ISeriesApi } from 'li
 import { Icons } from '../../components/Icons';
 import { subscribeToTicker, subscribeToDepth, executeOrder, getCandles } from '../../services/binanceService';
 import { BinanceConfig } from '../../types';
+import { calculateRSI } from '../../utils/neuralMath';
 
 type ChartType = 'CANDLES' | 'LINE' | 'AREA' | 'BARS' | 'HEIKIN';
 
@@ -18,6 +19,7 @@ export const EvaCore = ({ config, logs, onLog }: EvaCoreProps) => {
   const [currentPrice, setCurrentPrice] = useState(0);
   const [priceChange, setPriceChange] = useState(0);
   const [volume, setVolume] = useState('0');
+  const [liveRsi, setLiveRsi] = useState(50); // Estado para mostrar RSI en tiempo real
   
   // --- ESTADO DEL GRÁFICO ---
   const [chartType, setChartType] = useState<ChartType>('CANDLES');
@@ -33,6 +35,7 @@ export const EvaCore = ({ config, logs, onLog }: EvaCoreProps) => {
   const [executing, setExecuting] = useState(false);
   const [lastOrder, setLastOrder] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const lastTradeTimeRef = useRef<number>(0); // Evitar spam de operaciones
 
   // --- ESTADO DEL ORDER BOOK ---
   const [asks, setAsks] = useState<{price: number, size: number, total: number, relativeSize: number}[]>([]);
@@ -87,7 +90,88 @@ export const EvaCore = ({ config, logs, onLog }: EvaCoreProps) => {
       // C. Éxito
       setExecuting(false);
       setIsSystemActive(true);
-      onLog("SYSTEM_START: Motor EVA activo. Escaneando oportunidades...", 'EXEC');
+      onLog("SYSTEM_START: Motor EVA activo. Bucle de trading iniciado.", 'EXEC');
+  };
+
+  // --- HEARTBEAT ENGINE: BUCLE DE TRADING AUTOMÁTICO ---
+  useEffect(() => {
+    let heartbeatInterval: any;
+
+    if (isSystemActive) {
+        // Ejecutar análisis cada 3 segundos
+        heartbeatInterval = setInterval(async () => {
+            // 1. Verificar condiciones básicas
+            if (executing || candleDataRef.current.length < 20) return;
+
+            // 2. Obtener datos más recientes
+            const candles = candleDataRef.current;
+            const closePrices = candles.map(c => c.close);
+            const currentRSI = calculateRSI(closePrices, 14);
+            setLiveRsi(currentRSI);
+
+            const lastClose = closePrices[closePrices.length - 1];
+            const now = Date.now();
+            const COOLDOWN = 60000; // 1 minuto entre operaciones automáticas
+
+            // Logs de "latido" para que el usuario vea que está viva
+            if (Math.random() > 0.7) {
+                 onLog(`SCAN: Precio ${lastClose} | RSI ${currentRSI.toFixed(2)} | Buscando entrada...`, 'INFO');
+            }
+
+            // 3. Lógica de Trading (Estrategia Simple RSI)
+            // Solo operamos si pasó el tiempo de enfriamiento
+            if (now - lastTradeTimeRef.current > COOLDOWN) {
+                
+                // CONDICIÓN DE COMPRA (SOBREVENTA)
+                if (currentRSI < 30) {
+                    onLog(`SIGNAL: Oportunidad de COMPRA detectada (RSI ${currentRSI.toFixed(2)} < 30).`, 'EXEC');
+                    if (config.autonomousMode) {
+                        await performAutoTrade('BUY');
+                    } else {
+                        onLog("AUTO_BLOCK: Modo autónomo desactivado. Se requiere aprobación manual.", 'WARN');
+                    }
+                }
+                
+                // CONDICIÓN DE VENTA (SOBRECOMPRA)
+                else if (currentRSI > 70) {
+                    onLog(`SIGNAL: Oportunidad de VENTA detectada (RSI ${currentRSI.toFixed(2)} > 70).`, 'EXEC');
+                    if (config.autonomousMode) {
+                        await performAutoTrade('SELL');
+                    } else {
+                         onLog("AUTO_BLOCK: Modo autónomo desactivado. Se requiere aprobación manual.", 'WARN');
+                    }
+                }
+            }
+
+        }, 3000);
+    }
+
+    return () => clearInterval(heartbeatInterval);
+  }, [isSystemActive, config.autonomousMode, executing]); // Dependencias críticas
+
+  // Función auxiliar para trading automático
+  const performAutoTrade = async (side: 'BUY' | 'SELL') => {
+      if (executing) return;
+      setExecuting(true);
+      try {
+          // Calcular cantidad basada en la configuración (Ejemplo simplificado: cantidad fija mínima para evitar errores)
+          // NOTA: En producción real, esto debe calcularse con precisiones de filtros de Binance.
+          // Usamos 0.0002 BTC como ejemplo de trade pequeño seguro.
+          const quantity = 0.0002; 
+          
+          onLog(`AUTO_EXEC: Iniciando orden ${side} de ${quantity} BTC...`, 'EXEC');
+          
+          const result = await executeOrder(config.apiKey, config.apiSecret, 'BTCUSDT', side, quantity);
+          
+          lastTradeTimeRef.current = Date.now();
+          setLastOrder(`AUTO-${result.orderId}`);
+          onLog(`SUCCESS: Orden ${side} ejecutada a precio mercado.`, 'SYS');
+          
+      } catch (e: any) {
+          onLog(`FAIL: Error en ejecución automática: ${e.message}`, 'WARN');
+      } finally {
+          setExecuting(false);
+      }
   };
 
   // --- INICIALIZACIÓN DEL GRÁFICO ---
@@ -299,7 +383,7 @@ export const EvaCore = ({ config, logs, onLog }: EvaCoreProps) => {
     };
   }, []);
 
-  // --- EJECUCIÓN DE ÓRDENES REALES ---
+  // --- EJECUCIÓN DE ÓRDENES MANUALES ---
   const handleTrade = async (side: 'BUY' | 'SELL') => {
       // Bloquear si el sistema global no está activo
       if (!isSystemActive) {
@@ -311,9 +395,10 @@ export const EvaCore = ({ config, logs, onLog }: EvaCoreProps) => {
       }
 
       setExecuting(true);
-      onLog(`INIT_ORDER: Preparando orden ${side} MARKET...`, 'EXEC');
+      onLog(`INIT_ORDER: Preparando orden manual ${side} MARKET...`, 'EXEC');
       try {
-          const quantity = 0.0001;
+          // Cantidad hardcodeada para seguridad en pruebas
+          const quantity = 0.0002;
           const result = await executeOrder(config.apiKey, config.apiSecret, 'BTCUSDT', side, quantity);
           setLastOrder(`ORD-${result.orderId}`);
           onLog(`SUCCESS: Orden ${result.orderId} ejecutada. Precio: ${result.cummulativeQuoteQty}`, 'EXEC');
@@ -357,6 +442,14 @@ export const EvaCore = ({ config, logs, onLog }: EvaCoreProps) => {
             </div>
             
             <div className="flex gap-6 items-center">
+                 {/* Indicador RSI Vivo */}
+                 <div className="hidden md:flex flex-col items-end">
+                    <div className="text-[10px] text-slate-500 uppercase tracking-widest">RSI (14)</div>
+                    <div className={`text-xl font-bold font-mono ${liveRsi < 30 ? 'text-emerald-400 animate-pulse' : liveRsi > 70 ? 'text-rose-400 animate-pulse' : 'text-blue-400'}`}>
+                        {liveRsi.toFixed(2)}
+                    </div>
+                 </div>
+
                  <div className="text-right hidden sm:block">
                     <div className="text-[10px] text-slate-500 uppercase tracking-widest">Precio Actual</div>
                     <div className={`text-2xl font-bold tracking-tight ${isPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
@@ -460,7 +553,9 @@ export const EvaCore = ({ config, logs, onLog }: EvaCoreProps) => {
 
                              {!systemError && (
                                  <div className="mt-2 text-[10px] text-slate-500 text-center font-mono">
-                                     {isSystemActive ? 'EJECUCIÓN ACTIVA: MONITOREANDO MERCADO' : 'ESPERANDO ORDEN DE INICIO'}
+                                     {isSystemActive 
+                                        ? `EJECUCIÓN ACTIVA: ${config.autonomousMode ? 'MODO AUTÓNOMO' : 'MODO SUPERVISADO'}` 
+                                        : 'ESPERANDO ORDEN DE INICIO'}
                                  </div>
                              )}
                         </div>
@@ -502,8 +597,10 @@ export const EvaCore = ({ config, logs, onLog }: EvaCoreProps) => {
                                     {executing ? '...' : 'SELL / SHORT'}
                                 </button>
                             </div>
-                            <p className="text-[10px] text-slate-500 text-center">
-                                ADVERTENCIA: Esta acción ejecutará órdenes reales usando sus API Keys.
+                            <p className="text-[10px] text-slate-500 text-center leading-tight">
+                                {config.autonomousMode 
+                                    ? <span className="text-purple-400 font-bold">⚠️ MODO AUTÓNOMO ACTIVO: EVA operará automáticamente.</span>
+                                    : "ADVERTENCIA: Esta acción ejecutará órdenes reales."}
                             </p>
                         </div>
                     </div>
@@ -576,3 +673,4 @@ export const EvaCore = ({ config, logs, onLog }: EvaCoreProps) => {
     </div>
   );
 };
+    
